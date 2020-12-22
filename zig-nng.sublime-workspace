@@ -1,0 +1,1133 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"I",
+				"INS\tTag"
+			],
+			[
+				"w",
+				"with\tTabNine ✨"
+			],
+			[
+				"Tens",
+				"TensorShape"
+			],
+			[
+				"cud",
+				"cudnn_handle"
+			],
+			[
+				"exte",
+				"extension"
+			],
+			[
+				"ente",
+				"entry_content_type"
+			],
+			[
+				"slash",
+				"slash_pos"
+			],
+			[
+				"D",
+				"DIRECTORY"
+			],
+			[
+				"S",
+				"SINGLEFILE"
+			],
+			[
+				"uint",
+				"uint64_t"
+			],
+			[
+				"P",
+				"PortableBinaryInputArchive"
+			],
+			[
+				"req",
+				"req_string"
+			],
+			[
+				"reque",
+				"request_handler_"
+			],
+			[
+				"dec",
+				"decode_hexchar"
+			],
+			[
+				"cer",
+				"cereal"
+			],
+			[
+				"ui",
+				"uint8_t"
+			],
+			[
+				"bac",
+				"backup_hash"
+			],
+			[
+				"ent",
+				"entry_hash"
+			],
+			[
+				"read",
+				"read_only"
+			],
+			[
+				"ol",
+				"old_load"
+			],
+			[
+				"new",
+				"new"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"contents": "const std = @import(\"std\");\nconst Builder = std.build.Builder;\nconst builtin = @import(\"builtin\");\n\npub fn build(b: *Builder) void {\n    const mode = b.standardReleaseOptions();\n    // const lib = b.addStaticLibrary(\"zig-nng\", \"src/main.zig\");\n    // lib.addIncludeDir(\"nng/include\");\n    // lib.setBuildMode(mode);\n    // lib.linkLibC();\n    // lib.install();\n\n    const nng_lib = getLibrary(b, mode);\n    nng_lib.linkLibC();\n    nng_lib.install();\n\n    const exe_test = b.\n\n    var main_tests = b.addTest(\"src/main.zig\");\n    main_tests.addIncludeDir(\"nng/include\");\n    main_tests.setBuildMode(mode);\n    // main_tests.addLinkDir(\"nng/include\");\n    main_tests.linkSystemLibrary(\"nng\");\n    // main_tests.linkLibrary(nng_lib);\n\n    const test_step = b.step(\"test\", \"Run library tests\");\n    test_step.dependOn(&main_tests.step);\n}\n\npub fn getLibrary(\n    b: *Builder,\n    mode: builtin.Mode,\n    // target: std.build.Target,\n) *std.build.LibExeObjStep {\n    const lib_cflags = &[_][]const u8{\"-std=c99\"};\n    const lib = b.addStaticLibrary(\"nng\", null);\n    lib.setBuildMode(mode);\n    // lib.setTarget(target);\n    lib.linkSystemLibrary(\"c\");\n\n    lib.defineCMacro(\"NNG_PLATFORM_POSIX\");\n    lib.defineCMacro(\"NNG_PLATFORM_LINUX\");\n    lib.defineCMacro(\"NNG_USE_EVENTFD\");\n    lib.defineCMacro(\"NNG_HAVE_ABSTRACT_SOCKETS\");\n\n    lib.defineCMacro(\"_GNU_SOURCE\");\n    lib.defineCMacro(\"_REENTRANT\");\n    lib.defineCMacro(\"_THREAD_SAFE\");\n    lib.defineCMacro(\"_POSIX_PTHREAD_SEMANTICS\");\n\n    lib.addIncludeDir(\"nng/include\");\n    lib.addIncludeDir(\"nng/src\");\n\n    for (nng_src_files) |src_file| {\n        lib.addCSourceFile(src_file, lib_cflags);\n    }\n\n    return lib;\n}\n\n// List all nng source files\nconst nng_src_files = [_][]const u8{\n    \"nng/src/core/aio.c\",\n    \"nng/src/core/clock.c\",\n    \"nng/src/core/device.c\",\n    \"nng/src/core/dialer.c\",\n    \"nng/src/core/file.c\",\n    \"nng/src/core/idhash.c\",\n    \"nng/src/core/init.c\",\n    \"nng/src/core/list.c\",\n    \"nng/src/core/listener.c\",\n    \"nng/src/core/lmq.c\",\n    \"nng/src/core/message.c\",\n    \"nng/src/core/msgqueue.c\",\n    \"nng/src/core/options.c\",\n    \"nng/src/core/panic.c\",\n    \"nng/src/core/pipe.c\",\n    \"nng/src/core/pollable.c\",\n    \"nng/src/core/protocol.c\",\n    \"nng/src/core/reap.c\",\n    \"nng/src/core/socket.c\",\n    \"nng/src/core/stats.c\",\n    \"nng/src/core/stream.c\",\n    \"nng/src/core/strs.c\",\n    \"nng/src/core/taskq.c\",\n    \"nng/src/core/tcp.c\",\n    \"nng/src/core/thread.c\",\n    \"nng/src/core/timer.c\",\n    \"nng/src/core/transport.c\",\n    \"nng/src/core/url.c\",\n    \"nng/src/nng.c\",\n    \"nng/src/nng_legacy.c\",\n    \"nng/src/platform/posix/posix_alloc.c\",\n    \"nng/src/platform/posix/posix_atomic.c\",\n    \"nng/src/platform/posix/posix_clock.c\",\n    \"nng/src/platform/posix/posix_debug.c\",\n    \"nng/src/platform/posix/posix_file.c\",\n    \"nng/src/platform/posix/posix_ipcconn.c\",\n    \"nng/src/platform/posix/posix_ipcdial.c\",\n    \"nng/src/platform/posix/posix_ipclisten.c\",\n    \"nng/src/platform/posix/posix_pipe.c\",\n    \"nng/src/platform/posix/posix_pollq_epoll.c\",\n    \"nng/src/platform/posix/posix_pollq_kqueue.c\",\n    \"nng/src/platform/posix/posix_pollq_poll.c\",\n    \"nng/src/platform/posix/posix_pollq_port.c\",\n    \"nng/src/platform/posix/posix_rand_arc4random.c\",\n    \"nng/src/platform/posix/posix_rand_getrandom.c\",\n    \"nng/src/platform/posix/posix_rand_urandom.c\",\n    \"nng/src/platform/posix/posix_resolv_gai.c\",\n    \"nng/src/platform/posix/posix_sockaddr.c\",\n    \"nng/src/platform/posix/posix_tcpconn.c\",\n    \"nng/src/platform/posix/posix_tcpdial.c\",\n    \"nng/src/platform/posix/posix_tcplisten.c\",\n    \"nng/src/platform/posix/posix_thread.c\",\n    \"nng/src/platform/posix/posix_udp.c\",\n    \"nng/src/protocol/bus0/bus.c\",\n    \"nng/src/protocol/pair0/pair.c\",\n    \"nng/src/protocol/pair1/pair.c\",\n    \"nng/src/protocol/pair1/pair1_poly.c\",\n    \"nng/src/protocol/pipeline0/pull.c\",\n    \"nng/src/protocol/pipeline0/push.c\",\n    \"nng/src/protocol/pubsub0/pub.c\",\n    \"nng/src/protocol/pubsub0/sub.c\",\n    \"nng/src/protocol/pubsub0/xsub.c\",\n    \"nng/src/protocol/reqrep0/rep.c\",\n    \"nng/src/protocol/reqrep0/req.c\",\n    \"nng/src/protocol/reqrep0/xrep.c\",\n    \"nng/src/protocol/reqrep0/xreq.c\",\n    \"nng/src/protocol/survey0/respond.c\",\n    \"nng/src/protocol/survey0/survey.c\",\n    \"nng/src/protocol/survey0/xrespond.c\",\n    \"nng/src/protocol/survey0/xsurvey.c\",\n    \"nng/src/supplemental/base64/base64.c\",\n    \"nng/src/supplemental/http/http_chunk.c\",\n    \"nng/src/supplemental/http/http_client.c\",\n    \"nng/src/supplemental/http/http_conn.c\",\n    \"nng/src/supplemental/http/http_msg.c\",\n    \"nng/src/supplemental/http/http_public.c\",\n    \"nng/src/supplemental/http/http_schemes.c\",\n    \"nng/src/supplemental/http/http_server.c\",\n    \"nng/src/supplemental/sha1/sha1.c\",\n    // \"nng/src/supplemental/tls/mbedtls/tls.c\",\n    \"nng/src/supplemental/tls/tls_common.c\",\n    \"nng/src/supplemental/util/options.c\",\n    \"nng/src/supplemental/util/platform.c\",\n    \"nng/src/supplemental/websocket/stub.c\",\n    \"nng/src/supplemental/websocket/websocket.c\",\n    \"nng/src/transport/inproc/inproc.c\",\n    \"nng/src/transport/ipc/ipc.c\",\n    \"nng/src/transport/tcp/tcp.c\",\n    \"nng/src/transport/tls/tls.c\",\n    \"nng/src/transport/ws/websocket.c\",\n    // \"nng/src/transport/zerotier/zerotier.c\",\n    // \"nng/src/transport/zerotier/zthash.c\",\n};\n",
+			"file": "build.zig",
+			"file_size": 5198,
+			"file_write_time": 132529803928893113,
+			"settings":
+			{
+				"buffer_size": 5309,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"contents": "Mozilla Public License Version 2.0\n==================================\n\n1. Definitions\n--------------\n\n1.1. \"Contributor\"\n    means each individual or legal entity that creates, contributes to\n    the creation of, or owns Covered Software.\n\n1.2. \"Contributor Version\"\n    means the combination of the Contributions of others (if any) used\n    by a Contributor and that particular Contributor's Contribution.\n\n1.3. \"Contribution\"\n    means Covered Software of a particular Contributor.\n\n1.4. \"Covered Software\"\n    means Source Code Form to which the initial Contributor has attached\n    the notice in Exhibit A, the Executable Form of such Source Code\n    Form, and Modifications of such Source Code Form, in each case\n    including portions thereof.\n\n1.5. \"Incompatible With Secondary Licenses\"\n    means\n\n    (a) that the initial Contributor has attached the notice described\n        in Exhibit B to the Covered Software; or\n\n    (b) that the Covered Software was made available under the terms of\n        version 1.1 or earlier of the License, but not also under the\n        terms of a Secondary License.\n\n1.6. \"Executable Form\"\n    means any form of the work other than Source Code Form.\n\n1.7. \"Larger Work\"\n    means a work that combines Covered Software with other material, in\n    a separate file or files, that is not Covered Software.\n\n1.8. \"License\"\n    means this document.\n\n1.9. \"Licensable\"\n    means having the right to grant, to the maximum extent possible,\n    whether at the time of the initial grant or subsequently, any and\n    all of the rights conveyed by this License.\n\n1.10. \"Modifications\"\n    means any of the following:\n\n    (a) any file in Source Code Form that results from an addition to,\n        deletion from, or modification of the contents of Covered\n        Software; or\n\n    (b) any new file in Source Code Form that contains any Covered\n        Software.\n\n1.11. \"Patent Claims\" of a Contributor\n    means any patent claim(s), including without limitation, method,\n    process, and apparatus claims, in any patent Licensable by such\n    Contributor that would be infringed, but for the grant of the\n    License, by the making, using, selling, offering for sale, having\n    made, import, or transfer of either its Contributions or its\n    Contributor Version.\n\n1.12. \"Secondary License\"\n    means either the GNU General Public License, Version 2.0, the GNU\n    Lesser General Public License, Version 2.1, the GNU Affero General\n    Public License, Version 3.0, or any later versions of those\n    licenses.\n\n1.13. \"Source Code Form\"\n    means the form of the work preferred for making modifications.\n\n1.14. \"You\" (or \"Your\")\n    means an individual or a legal entity exercising rights under this\n    License. For legal entities, \"You\" includes any entity that\n    controls, is controlled by, or is under common control with You. For\n    purposes of this definition, \"control\" means (a) the power, direct\n    or indirect, to cause the direction or management of such entity,\n    whether by contract or otherwise, or (b) ownership of more than\n    fifty percent (50%) of the outstanding shares or beneficial\n    ownership of such entity.\n\n2. License Grants and Conditions\n--------------------------------\n\n2.1. Grants\n\nEach Contributor hereby grants You a world-wide, royalty-free,\nnon-exclusive license:\n\n(a) under intellectual property rights (other than patent or trademark)\n    Licensable by such Contributor to use, reproduce, make available,\n    modify, display, perform, distribute, and otherwise exploit its\n    Contributions, either on an unmodified basis, with Modifications, or\n    as part of a Larger Work; and\n\n(b) under Patent Claims of such Contributor to make, use, sell, offer\n    for sale, have made, import, and otherwise transfer either its\n    Contributions or its Contributor Version.\n\n2.2. Effective Date\n\nThe licenses granted in Section 2.1 with respect to any Contribution\nbecome effective for each Contribution on the date the Contributor first\ndistributes such Contribution.\n\n2.3. Limitations on Grant Scope\n\nThe licenses granted in this Section 2 are the only rights granted under\nthis License. No additional rights or licenses will be implied from the\ndistribution or licensing of Covered Software under this License.\nNotwithstanding Section 2.1(b) above, no patent license is granted by a\nContributor:\n\n(a) for any code that a Contributor has removed from Covered Software;\n    or\n\n(b) for infringements caused by: (i) Your and any other third party's\n    modifications of Covered Software, or (ii) the combination of its\n    Contributions with other software (except as part of its Contributor\n    Version); or\n\n(c) under Patent Claims infringed by Covered Software in the absence of\n    its Contributions.\n\nThis License does not grant any rights in the trademarks, service marks,\nor logos of any Contributor (except as may be necessary to comply with\nthe notice requirements in Section 3.4).\n\n2.4. Subsequent Licenses\n\nNo Contributor makes additional grants as a result of Your choice to\ndistribute the Covered Software under a subsequent version of this\nLicense (see Section 10.2) or under the terms of a Secondary License (if\npermitted under the terms of Section 3.3).\n\n2.5. Representation\n\nEach Contributor represents that the Contributor believes its\nContributions are its original creation(s) or it has sufficient rights\nto grant the rights to its Contributions conveyed by this License.\n\n2.6. Fair Use\n\nThis License is not intended to limit any rights You have under\napplicable copyright doctrines of fair use, fair dealing, or other\nequivalents.\n\n2.7. Conditions\n\nSections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted\nin Section 2.1.\n\n3. Responsibilities\n-------------------\n\n3.1. Distribution of Source Form\n\nAll distribution of Covered Software in Source Code Form, including any\nModifications that You create or to which You contribute, must be under\nthe terms of this License. You must inform recipients that the Source\nCode Form of the Covered Software is governed by the terms of this\nLicense, and how they can obtain a copy of this License. You may not\nattempt to alter or restrict the recipients' rights in the Source Code\nForm.\n\n3.2. Distribution of Executable Form\n\nIf You distribute Covered Software in Executable Form then:\n\n(a) such Covered Software must also be made available in Source Code\n    Form, as described in Section 3.1, and You must inform recipients of\n    the Executable Form how they can obtain a copy of such Source Code\n    Form by reasonable means in a timely manner, at a charge no more\n    than the cost of distribution to the recipient; and\n\n(b) You may distribute such Executable Form under the terms of this\n    License, or sublicense it under different terms, provided that the\n    license for the Executable Form does not attempt to limit or alter\n    the recipients' rights in the Source Code Form under this License.\n\n3.3. Distribution of a Larger Work\n\nYou may create and distribute a Larger Work under terms of Your choice,\nprovided that You also comply with the requirements of this License for\nthe Covered Software. If the Larger Work is a combination of Covered\nSoftware with a work governed by one or more Secondary Licenses, and the\nCovered Software is not Incompatible With Secondary Licenses, this\nLicense permits You to additionally distribute such Covered Software\nunder the terms of such Secondary License(s), so that the recipient of\nthe Larger Work may, at their option, further distribute the Covered\nSoftware under the terms of either this License or such Secondary\nLicense(s).\n\n3.4. Notices\n\nYou may not remove or alter the substance of any license notices\n(including copyright notices, patent notices, disclaimers of warranty,\nor limitations of liability) contained within the Source Code Form of\nthe Covered Software, except that You may alter any license notices to\nthe extent required to remedy known factual inaccuracies.\n\n3.5. Application of Additional Terms\n\nYou may choose to offer, and to charge a fee for, warranty, support,\nindemnity or liability obligations to one or more recipients of Covered\nSoftware. However, You may do so only on Your own behalf, and not on\nbehalf of any Contributor. You must make it absolutely clear that any\nsuch warranty, support, indemnity, or liability obligation is offered by\nYou alone, and You hereby agree to indemnify every Contributor for any\nliability incurred by such Contributor as a result of warranty, support,\nindemnity or liability terms You offer. You may include additional\ndisclaimers of warranty and limitations of liability specific to any\njurisdiction.\n\n4. Inability to Comply Due to Statute or Regulation\n---------------------------------------------------\n\nIf it is impossible for You to comply with any of the terms of this\nLicense with respect to some or all of the Covered Software due to\nstatute, judicial order, or regulation then You must: (a) comply with\nthe terms of this License to the maximum extent possible; and (b)\ndescribe the limitations and the code they affect. Such description must\nbe placed in a text file included with all distributions of the Covered\nSoftware under this License. Except to the extent prohibited by statute\nor regulation, such description must be sufficiently detailed for a\nrecipient of ordinary skill to be able to understand it.\n\n5. Termination\n--------------\n\n5.1. The rights granted under this License will terminate automatically\nif You fail to comply with any of its terms. However, if You become\ncompliant, then the rights granted under this License from a particular\nContributor are reinstated (a) provisionally, unless and until such\nContributor explicitly and finally terminates Your grants, and (b) on an\nongoing basis, if such Contributor fails to notify You of the\nnon-compliance by some reasonable means prior to 60 days after You have\ncome back into compliance. Moreover, Your grants from a particular\nContributor are reinstated on an ongoing basis if such Contributor\nnotifies You of the non-compliance by some reasonable means, this is the\nfirst time You have received notice of non-compliance with this License\nfrom such Contributor, and You become compliant prior to 30 days after\nYour receipt of the notice.\n\n5.2. If You initiate litigation against any entity by asserting a patent\ninfringement claim (excluding declaratory judgment actions,\ncounter-claims, and cross-claims) alleging that a Contributor Version\ndirectly or indirectly infringes any patent, then the rights granted to\nYou by any and all Contributors for the Covered Software under Section\n2.1 of this License shall terminate.\n\n5.3. In the event of termination under Sections 5.1 or 5.2 above, all\nend user license agreements (excluding distributors and resellers) which\nhave been validly granted by You or Your distributors under this License\nprior to termination shall survive termination.\n\n************************************************************************\n*                                                                      *\n*  6. Disclaimer of Warranty                                           *\n*  -------------------------                                           *\n*                                                                      *\n*  Covered Software is provided under this License on an \"as is\"       *\n*  basis, without warranty of any kind, either expressed, implied, or  *\n*  statutory, including, without limitation, warranties that the       *\n*  Covered Software is free of defects, merchantable, fit for a        *\n*  particular purpose or non-infringing. The entire risk as to the     *\n*  quality and performance of the Covered Software is with You.        *\n*  Should any Covered Software prove defective in any respect, You     *\n*  (not any Contributor) assume the cost of any necessary servicing,   *\n*  repair, or correction. This disclaimer of warranty constitutes an   *\n*  essential part of this License. No use of any Covered Software is   *\n*  authorized under this License except under this disclaimer.         *\n*                                                                      *\n************************************************************************\n\n************************************************************************\n*                                                                      *\n*  7. Limitation of Liability                                          *\n*  --------------------------                                          *\n*                                                                      *\n*  Under no circumstances and under no legal theory, whether tort      *\n*  (including negligence), contract, or otherwise, shall any           *\n*  Contributor, or anyone who distributes Covered Software as          *\n*  permitted above, be liable to You for any direct, indirect,         *\n*  special, incidental, or consequential damages of any character      *\n*  including, without limitation, damages for lost profits, loss of    *\n*  goodwill, work stoppage, computer failure or malfunction, or any    *\n*  and all other commercial damages or losses, even if such party      *\n*  shall have been informed of the possibility of such damages. This   *\n*  limitation of liability shall not apply to liability for death or   *\n*  personal injury resulting from such party's negligence to the       *\n*  extent applicable law prohibits such limitation. Some               *\n*  jurisdictions do not allow the exclusion or limitation of           *\n*  incidental or consequential damages, so this exclusion and          *\n*  limitation may not apply to You.                                    *\n*                                                                      *\n************************************************************************\n\n8. Litigation\n-------------\n\nAny litigation relating to this License may be brought only in the\ncourts of a jurisdiction where the defendant maintains its principal\nplace of business and such litigation shall be governed by laws of that\njurisdiction, without reference to its conflict-of-law provisions.\nNothing in this Section shall prevent a party's ability to bring\ncross-claims or counter-claims.\n\n9. Miscellaneous\n----------------\n\nThis License represents the complete agreement concerning the subject\nmatter hereof. If any provision of this License is held to be\nunenforceable, such provision shall be reformed only to the extent\nnecessary to make it enforceable. Any law or regulation which provides\nthat the language of a contract shall be construed against the drafter\nshall not be used to construe this License against a Contributor.\n\n10. Versions of the License\n---------------------------\n\n10.1. New Versions\n\nMozilla Foundation is the license steward. Except as provided in Section\n10.3, no one other than the license steward has the right to modify or\npublish new versions of this License. Each version will be given a\ndistinguishing version number.\n\n10.2. Effect of New Versions\n\nYou may distribute the Covered Software under the terms of the version\nof the License under which You originally received the Covered Software,\nor under the terms of any subsequent version published by the license\nsteward.\n\n10.3. Modified Versions\n\nIf you create software not governed by this License, and you want to\ncreate a new license for such software, you may create and use a\nmodified version of this License if you rename the license and remove\nany references to the name of the license steward (except to note that\nsuch modified license differs from this License).\n\n10.4. Distributing Source Code Form that is Incompatible With Secondary\nLicenses\n\nIf You choose to distribute Source Code Form that is Incompatible With\nSecondary Licenses under the terms of this version of the License, the\nnotice described in Exhibit B of this License must be attached.\n\nExhibit A - Source Code Form License Notice\n-------------------------------------------\n\n  This Source Code Form is subject to the terms of the Mozilla Public\n  License, v. 2.0. If a copy of the MPL was not distributed with this\n  file, You can obtain one at http://mozilla.org/MPL/2.0/.\n\nIf it is not possible or desirable to put the notice in a particular\nfile, then You may include the notice in a location (such as a LICENSE\nfile in a relevant directory) where a recipient would be likely to look\nfor such a notice.\n\nYou may add additional accurate notices of copyright ownership.\n\nExhibit B - \"Incompatible With Secondary Licenses\" Notice\n---------------------------------------------------------\n\n  This Source Code Form is \"Incompatible With Secondary Licenses\", as\n  defined by the Mozilla Public License, v. 2.0.\n",
+			"file": "LICENSE",
+			"file_size": 16725,
+			"file_write_time": 132529596712100627,
+			"settings":
+			{
+				"buffer_size": 16725,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "Packages/Zig Language/Build Systems/Zig.sublime-build",
+	"build_system_choices":
+	[
+		[
+			[
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					""
+				],
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					"Run File"
+				],
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					"Test File"
+				],
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					"Format File"
+				],
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					"Test Project"
+				],
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					"Build Project"
+				],
+				[
+					"Packages/Zig Language/Build Systems/Zig.sublime-build",
+					"Format Project"
+				]
+			],
+			[
+				"Packages/Zig Language/Build Systems/Zig.sublime-build",
+				""
+			]
+		]
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"select",
+				"Bookmarks: Select All"
+			],
+			[
+				"test",
+				"Build With: Zig - Test File"
+			],
+			[
+				"zig test",
+				"Build With: Zig - Test File"
+			],
+			[
+				"refre",
+				"Project: Refresh Folders"
+			],
+			[
+				"zig te",
+				"Build With: Zig - Test File"
+			],
+			[
+				"syntazig",
+				"Set Syntax: Zig"
+			],
+			[
+				"testt",
+				"Set Syntax: reStructuredText"
+			],
+			[
+				"zig",
+				"Build With: Zig - Test File"
+			],
+			[
+				"setting",
+				"Preferences: Settings"
+			],
+			[
+				"build",
+				"Build: Cancel"
+			],
+			[
+				"instal",
+				"Package Control: Install Package"
+			],
+			[
+				"make",
+				"Build With: Make"
+			],
+			[
+				"remove",
+				"Package Control: Remove Package"
+			],
+			[
+				"clangfor",
+				"Clang Format: Format Selection"
+			],
+			[
+				"git b",
+				"Git: Blame"
+			],
+			[
+				"clang",
+				"Clang Format: Format Selection"
+			],
+			[
+				"clan",
+				"Clang Format: Format Selection"
+			],
+			[
+				"blam",
+				"Git: Blame"
+			],
+			[
+				"git bla",
+				"Git: Blame"
+			],
+			[
+				"git bl",
+				"Git: Blame"
+			],
+			[
+				"insta",
+				"Package Control: Install Package"
+			],
+			[
+				"clag",
+				"Clang Format: Format Selection"
+			],
+			[
+				"update",
+				"Package Control: Upgrade/Overwrite All Packages"
+			],
+			[
+				"packaup",
+				"Package Control: Upgrade Package"
+			],
+			[
+				"convert",
+				"Indentation: Convert to Spaces"
+			],
+			[
+				"comple",
+				"EasyClangComplete: Open completion triggers location"
+			],
+			[
+				"easycl",
+				"EasyClangComplete: Settings"
+			],
+			[
+				"convert spa",
+				"Indentation: Convert to Spaces"
+			],
+			[
+				"tab",
+				"View: Toggle Tabs"
+			]
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 213.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/home/marijnfs/dev/zig-nng"
+	],
+	"file_history":
+	[
+		"/home/marijnfs/dev/detr/models/detr.py",
+		"/home/marijnfs/dev/detr/board-small.JPG",
+		"/home/marijnfs/dev/detr/getargs.py",
+		"/home/marijnfs/dev/detr/#test_all.py#",
+		"/home/marijnfs/dev/detr/main.py",
+		"/home/marijnfs/dev/detr/.github/CONTRIBUTING.md",
+		"/home/marijnfs/dev/detr/test_all.py",
+		"/home/marijnfs/dev/detr/engine.py",
+		"/home/marijnfs/dev/detr/datasets/globus_dataloader.py",
+		"/home/marijnfs/dev/detr/Training.md",
+		"/home/marijnfs/dev/detr/models/transformer.py",
+		"/home/marijnfs/dev/detr/models/backbone.py",
+		"/home/marijnfs/dev/detr/models/position_encoding.py",
+		"/home/marijnfs/dev/detr/models/resnet_singlechannel.py",
+		"/home/marijnfs/dev/detr/convert.py",
+		"/home/marijnfs/dev/detr/util/misc.py",
+		"/home/marijnfs/dev/detr/datasets/transforms.py",
+		"/home/marijnfs/dev/detr/datasets/__init__.py",
+		"/home/marijnfs/dev/detr/datasets/coco.py",
+		"/home/marijnfs/dev/detr/d2/train_net.py",
+		"/home/marijnfs/dev/detr/convert.py~",
+		"/home/marijnfs/dev/zig-statemachine/src/default_allocator.zig",
+		"/home/marijnfs/dev/zig-statemachine/src/main.zig",
+		"/home/marijnfs/dev/zig-statemachine/src/state_machine_queue.zig",
+		"/home/marijnfs/dev/zig-statemachine/notes/next.md",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/timer.zig",
+		"/home/marijnfs/dev/zig-p2p/doc/idea.md",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/hash.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/serialization_allocate.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/logic/greet.zig",
+		"/home/marijnfs/dev/zig-p2p/bin/relaychat.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/logic/linereader.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/statemachine.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/queue.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/logic/incoming_chat.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/chat.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/message.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/socket.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/thread_pool.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/connection_management.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/events.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/event.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/outgoing_connection.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/chat_message.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/router.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/event_queues.zig",
+		"/home/marijnfs/dev/zig-p2p/bin/minitest.zig",
+		"/home/marijnfs/dev/zig-p2p/src/p2p/p2p.zig",
+		"/home/marijnfs/dev/zig-p2p/src/chat/messages.zig",
+		"/home/marijnfs/dev/zig-p2p/doc/connection_managing.md",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/livestreamingplugin/web/index.html",
+		"/usr/include/c++/9/bits/unique_ptr.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/ImageDescriptor.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/TypedImage.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/TorchImagePredictor.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TrainerPlugin/TrainerAlgorithm.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TrainerPlugin/TrainerAlgorithm.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/TorchImagePredictor.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/DataList.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/DataList.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/CT/GUI/MotionController.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/MainWindowBase.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/ImageSampling.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/SelectionWidget.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/TypedImage.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/MemImage.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/ImageDescriptor.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/plugins.sublime-project",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/externals-ubuntu-20.04/pytorch/1.5.0/include/torch/csrc/api/include/torch/data/samplers/random.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/SpinePlugin/SpineBaseAlgorithm.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/SpinePlugin/CMakeLists.txt",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/SpinePlugin/SpineStruct.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/SpinePlugin/SpineBaseAlgorithm.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/IO/MetaImage.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/IO/MetaImageIoAlgorithm.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/externals-ubuntu-20.04/pytorch/1.5.0/include/ATen/Functions.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/TorchTrainerBase.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/build/CMake Warning (dev) at CMakeLists.txt",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/externals-ubuntu-20.04/pytorch/1.5.0/include/ATen/core/dispatch/DispatchKeyExtractor.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/ML/Operations.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/LicenseManagerDefault.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/GUI/MeshDataController.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/externals-ubuntu-20.04/pytorch/1.5.0/include/ATen/core/dispatch/Dispatcher.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/externals-ubuntu-20.04/pytorch/1.5.0/include/ATen/core/LegacyTypeDispatch.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/externals-ubuntu-20.04/pytorch/1.5.0/include/ATen/core/TensorMethods.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexeImagePredictor.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/ML/Operation.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionLabels/lib/ui/annotation/DefaultAction.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexeTrainerBase.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/TorchModels.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/CMakeLists.txt",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/MLCommon.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/Properties.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/Utils.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/Test/ImageSamplersTest.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/SharedImage.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/GL/SharedImageSet.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/GL/SharedImageSet.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/Image.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/GL/SharedImage.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/GL/SharedImage.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Test/TestRunnerController.ui",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/Utils/Algorithms.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/ML/Test/ImageSamplersTest.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionLabels/lib/core/Utils.h",
+		"/usr/include/c++/9/bits/vector.tcc",
+		"/usr/include/c++/9/bits/alloc_traits.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexeTrainerBase.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/TorchTrainerBase.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TrainerPlugin/TrainerController.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/Properties.h",
+		"/home/marijnfs/.config/sublime-text-3/Packages/User/make-in-build.sublime-build",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/TorchPlugin/TorchModels.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Python/Bindings/MachineLearningBindings.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/ML/Test/SequentialProcessingTest.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/ImageROISamplers.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/ML/ImageROISamplers.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/Operation.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/ML/Utils.cpp",
+		"/usr/include/c++/9/ext/new_allocator.h",
+		"/usr/include/c++/9/bits/stl_pair.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionLabels/lib/core/Utils.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/Operations.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/SharedImageSet.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexeTrainingAlgorithm.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexePlugin.cpp",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/Core/include/ImFusion/Core/Utils/Optional.h",
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Source/Base/ParseFolderAndRunWorkspaceAlgorithm.cpp"
+	],
+	"find":
+	{
+		"height": 45.0
+	},
+	"find_in_files":
+	{
+		"height": 140.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"linksys",
+			"linkli"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 0,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "build.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 5309,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								876,
+								876
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "LICENSE",
+					"semi_transient": true,
+					"settings":
+					{
+						"buffer_size": 16725,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Text/Plain text.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 1,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 33.0
+	},
+	"input":
+	{
+		"height": 52.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.exec":
+	{
+		"height": 162.0
+	},
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "Packages/Zig Language/Build Systems/Zig.sublime-build",
+	"project": "zig-nng.sublime-project",
+	"replace":
+	{
+		"height": 62.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"detr",
+				"models/detr.py"
+			],
+			[
+				"match",
+				"models/matcher.py"
+			],
+			[
+				"",
+				"nng/src/platform/posix/posix_file.c"
+			],
+			[
+				"nngim",
+				"nng/src/core/nng_impl.h"
+			],
+			[
+				"posixfile",
+				"nng/src/platform/posix/posix_file.c"
+			],
+			[
+				"platfor",
+				"nng/src/core/platform.h"
+			],
+			[
+				"list",
+				"list"
+			],
+			[
+				"main.",
+				"src/main.zig"
+			],
+			[
+				"resnet",
+				"models/resnet_singlechannel.py"
+			],
+			[
+				"backbo",
+				"models/backbone.py"
+			],
+			[
+				"trans",
+				"models/transformer.py"
+			],
+			[
+				"backb",
+				"models/backbone.py"
+			],
+			[
+				"main",
+				"main.py"
+			],
+			[
+				"args",
+				"getargs.py"
+			],
+			[
+				"misc",
+				"util/misc.py"
+			],
+			[
+				"eng",
+				"engine.py"
+			],
+			[
+				"conv",
+				"convert.py"
+			],
+			[
+				"geta",
+				"getargs.py"
+			],
+			[
+				"glob",
+				"datasets/globus_dataloader.py"
+			],
+			[
+				"glbo",
+				"datasets/globus_dataloader.py"
+			],
+			[
+				"transfo",
+				"datasets/transforms.py"
+			],
+			[
+				"tran",
+				"models/transformer.py"
+			],
+			[
+				"con",
+				"convert.py"
+			],
+			[
+				"get",
+				"getargs.py"
+			],
+			[
+				"getar",
+				"getargs.py"
+			],
+			[
+				"rulest",
+				"~/dev/zig-gll/src/ruleset.zig"
+			],
+			[
+				"rule",
+				"src/rule.zig"
+			],
+			[
+				"desi",
+				"doc/design.md"
+			],
+			[
+				"dat",
+				"datasets/globus_dataloader.py"
+			],
+			[
+				"scr",
+				"script.py"
+			],
+			[
+				"det",
+				"models/detr.py"
+			],
+			[
+				"arg",
+				"getargs.py"
+			],
+			[
+				"pret",
+				"pretrain_transformer.py"
+			],
+			[
+				"res",
+				"models/resnet_singlechannel.py"
+			],
+			[
+				"back",
+				"models/backbone.py"
+			],
+			[
+				"agr",
+				"args.py"
+			],
+			[
+				"engin",
+				"engine.py"
+			],
+			[
+				"misc.",
+				"util/misc.py"
+			],
+			[
+				"post",
+				"models/position_encoding.py"
+			],
+			[
+				"mai",
+				"main.py"
+			],
+			[
+				"posie",
+				"models/position_encoding.py"
+			],
+			[
+				"transfor",
+				"datasets/transforms.py"
+			],
+			[
+				"glo",
+				"datasets/globus_dataloader.py"
+			],
+			[
+				"bakc",
+				"models/backbone.py"
+			],
+			[
+				"resn",
+				"models/resnet_singlechannel.py"
+			],
+			[
+				"train_net",
+				"d2/train_net.py"
+			],
+			[
+				"conb",
+				".github/CONTRIBUTING.md"
+			],
+			[
+				"testal",
+				"test_all.py"
+			],
+			[
+				"engi",
+				"engine.py"
+			],
+			[
+				"testall",
+				"test_all.py"
+			],
+			[
+				"mainz.i",
+				"src/main.zig"
+			],
+			[
+				"main.zi",
+				"src/main.zig"
+			],
+			[
+				"fini",
+				"src/finite_state_machine.zig"
+			],
+			[
+				"finm",
+				"src/finite_state_machine.zig"
+			],
+			[
+				"workqu",
+				"src/work_queue.zig"
+			],
+			[
+				"timer",
+				"src/p2p/timer.zig"
+			],
+			[
+				"serial",
+				"src/p2p/serialization_allocate.zig"
+			],
+			[
+				"chat.zi",
+				"src/chat/chat.zig"
+			],
+			[
+				"even",
+				"src/p2p/event.zig"
+			],
+			[
+				"router",
+				"src/p2p/router.zig"
+			],
+			[
+				"event",
+				"src/p2p/event.zig"
+			],
+			[
+				"events",
+				"src/chat/events.zig"
+			],
+			[
+				"eventque",
+				"src/chat/event_queues.zig"
+			],
+			[
+				"socket",
+				"src/p2p/socket.zig"
+			],
+			[
+				"outg",
+				"src/p2p/outgoing_connection.zig"
+			],
+			[
+				"out",
+				"src/p2p/outgoing_connection.zig"
+			],
+			[
+				"p2p.zi",
+				"src/p2p/p2p.zig"
+			],
+			[
+				"conma",
+				"src/p2p/connection_management.zig"
+			],
+			[
+				"outgo",
+				"src/p2p/outgoing_connection.zig"
+			],
+			[
+				"conn",
+				"src/p2p/connection_management.zig"
+			],
+			[
+				"conema",
+				"src/p2p/connection_management.zig"
+			],
+			[
+				"connema",
+				"src/p2p/connection_management.zig"
+			],
+			[
+				"message",
+				"src/p2p/message.zig"
+			],
+			[
+				"threadpo",
+				"src/p2p/thread_pool.zig"
+			],
+			[
+				"mess",
+				"src/p2p/message.zig"
+			],
+			[
+				"connma",
+				"src/p2p/connection_management.zig"
+			],
+			[
+				"gre",
+				"src/chat/logic/greet.zig"
+			],
+			[
+				"torchtraba",
+				"TorchPlugin/TorchTrainerBase.cpp"
+			],
+			[
+				"train",
+				"TrainerPlugin/TrainerBase.h"
+			],
+			[
+				"trainal",
+				"TrainerPlugin/TrainerAlgorithm.h"
+			],
+			[
+				"traineral",
+				"TrainerPlugin/TrainerAlgorithm.cpp"
+			],
+			[
+				"torchiampre",
+				"TorchPlugin/TorchImagePredictor.cpp"
+			],
+			[
+				"torchimapre",
+				"TorchPlugin/TorchImagePredictor.h"
+			],
+			[
+				"shareimase",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/GL/SharedImageSet.h"
+			],
+			[
+				"sharedimase",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/GL/SharedImageSet.h"
+			],
+			[
+				"torchimare",
+				"TorchPlugin/TorchImagePredictor.h"
+			],
+			[
+				"imagedes",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/ImageDescriptor.h"
+			],
+			[
+				"index.htm",
+				"livestreamingplugin/web/index.html"
+			],
+			[
+				"livestreacmake",
+				"livestreamingplugin/CMakeLists.txt"
+			],
+			[
+				"torchmo",
+				"TorchPlugin/TorchModels.cpp"
+			],
+			[
+				"operat",
+				"ImFusionSuite/ImFusionLib/Source/ML/Operations.cpp"
+			],
+			[
+				"torchmod",
+				"TorchPlugin/TorchModels.h"
+			],
+			[
+				"torchima",
+				"TorchPlugin/TorchImagePredictor.h"
+			],
+			[
+				"torhcmo",
+				"TorchPlugin/TorchModels.h"
+			],
+			[
+				"traial",
+				"TrainerPlugin/TrainerAlgorithm.cpp"
+			],
+			[
+				"torchbase",
+				"TorchPlugin/TorchTrainerBase.cpp"
+			],
+			[
+				"torch",
+				"TorchPlugin/TorchModels.cpp"
+			],
+			[
+				"torchmod.",
+				"TorchPlugin/TorchModels.h"
+			],
+			[
+				"dexetra",
+				"DexePlugin/DexeTrainerBase.h"
+			],
+			[
+				"trianba",
+				"TrainerPlugin/TrainerBase.h"
+			],
+			[
+				"traincon",
+				"TrainerPlugin/TrainerController.cpp"
+			],
+			[
+				"triancon",
+				"TrainerPlugin/TrainerController.cpp"
+			],
+			[
+				"filesysdire",
+				"ImFusionSuite/Core/include/ImFusion/Core/Filesystem/Directory.h"
+			],
+			[
+				"filesyst",
+				"ImFusionSuite/Core/doc/examples/Filesystem.cpp"
+			],
+			[
+				"trianal",
+				"TrainerPlugin/TrainerAlgorithm.h"
+			],
+			[
+				"filesystem",
+				"ImFusionSuite/Core/doc/examples/Filesystem.cpp"
+			],
+			[
+				"datacompolist",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/DataComponentList.h"
+			],
+			[
+				"data.h",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/Data.h"
+			],
+			[
+				"torctraba",
+				"TorchPlugin/TorchTrainerBase.cpp"
+			],
+			[
+				"torchtrab",
+				"TorchPlugin/TorchTrainerBase.h"
+			],
+			[
+				"dexetraba",
+				"DexePlugin/DexeTrainerBase.h"
+			],
+			[
+				"torchimagepre",
+				"TorchPlugin/TorchImagePredictor.cpp"
+			],
+			[
+				"dexetraiba",
+				"DexePlugin/DexeTrainerBase.cpp"
+			],
+			[
+				"datalist",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/DataList.h"
+			],
+			[
+				"mainwindba",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/MainWindowBase.h"
+			],
+			[
+				"torchba",
+				"TorchPlugin/TorchTrainerBase.cpp"
+			],
+			[
+				"roi",
+				"ImFusionSuite/ImFusionLib/Source/ML/ImageROISamplers.cpp"
+			],
+			[
+				"imagesampl",
+				"ImFusionSuite/ImFusionLib/Source/Base/ImageSampling.cpp"
+			],
+			[
+				"selectionwi",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/SelectionWidget.h"
+			],
+			[
+				"mainwinba",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/MainWindowBase.h"
+			],
+			[
+				"datamod",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/DataModel.h"
+			],
+			[
+				"spineconcp",
+				"SpinePlugin/SpineBaseController.cpp"
+			],
+			[
+				"trainercon",
+				"TrainerPlugin/TrainerController.cpp"
+			],
+			[
+				"memima",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/MemImage.h"
+			],
+			[
+				"typ",
+				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/TypedImage.h"
+			],
+			[
+				"typedima",
+				"ImFusionSuite/ImFusionLib/Source/Base/TypedImage.cpp"
+			],
+			[
+				"torchtrainba",
+				"TorchPlugin/TorchTrainerBase.h"
+			],
+			[
+				"torchimarre",
+				"TorchPlugin/TorchImagePredictor.cpp"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 500.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 380.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 353.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}
