@@ -21,13 +21,13 @@ pub fn build(b: *Builder) void {
 
     const exe = b.addExecutable("server", "src/server.zig");
     exe.addIncludeDir("nng/include");
-    exe.linkSystemLibrary("nng");
+    exe.linkSystemLibrary("nng"); //Todo, link to locally build library
     exe.linkLibC();
     exe.install();
 
     const exe_client = b.addExecutable("client", "src/client.zig");
     exe_client.addIncludeDir("nng/include");
-    exe_client.linkSystemLibrary("nng");
+    exe_client.linkSystemLibrary("nng"); //Todo, link to locally build library
     exe_client.linkLibC();
     exe_client.install();
 

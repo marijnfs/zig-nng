@@ -37,6 +37,11 @@ pub fn request(address: [*]const u8, msec: u32) void {
         fatal("nng_msg_append_u32", r);
     }
 
+    r = c.nng_msg_append_u32(msg, 24);
+    if (r != 0) {
+        fatal("nng_msg_append_u32", r);
+    }
+
     r = c.nng_sendmsg(sock, msg, 0);
     if (r != 0) {
         fatal("nng_sendmsg", r);
