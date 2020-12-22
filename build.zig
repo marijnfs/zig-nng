@@ -19,6 +19,18 @@ pub fn build(b: *Builder) void {
     main_tests.setBuildMode(mode);
     main_tests.linkLibrary(nng_lib);
 
+    const exe = b.addExecutable("server", "src/server.zig");
+    exe.addIncludeDir("nng/include");
+    exe.linkSystemLibrary("nng");
+    exe.linkLibC();
+    exe.install();
+
+    const exe_client = b.addExecutable("client", "src/client.zig");
+    exe_client.addIncludeDir("nng/include");
+    exe_client.linkSystemLibrary("nng");
+    exe_client.linkLibC();
+    exe_client.install();
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);
 }
