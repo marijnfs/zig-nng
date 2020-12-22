@@ -1,9 +1,5 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("nng/nng.h");
-    @cInclude("nng/protocol/reqrep0/rep.h");
-    @cInclude("nng/supplemental/util/platform.h");
-});
+const c = @import("c.zig").c;
 
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
@@ -72,6 +68,8 @@ fn serverCallback(arg: ?*c_void) callconv(.C) void {
             const msg = c.nng_aio_get_msg(work.aio);
 
             var when: u32 = undefined;
+            var what: u32 = undefined;
+
             const r2 = c.nng_msg_trim_u32(msg, &when);
             if (r2 != 0) {
                 c.nng_msg_free(msg);
@@ -79,8 +77,16 @@ fn serverCallback(arg: ?*c_void) callconv(.C) void {
                 return;
             }
 
+            const r3 = c.nng_msg_trim_u32(msg, &what);
+            if (r3 != 0) {
+                c.nng_msg_free(msg);
+                c.nng_ctx_recv(work.ctx, work.aio);
+                return;
+            }
+
             work.msg = msg;
             work.state = Work.State.Wait;
+            std.debug.warn("what: {}\n", .{what});
             c.nng_sleep_aio(@bitCast(i32, when), work.aio);
         },
 

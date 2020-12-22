@@ -15,21 +15,31 @@ pub fn build(b: *Builder) void {
 
     var main_tests = b.addTest("src/main.zig");
     main_tests.addIncludeDir("nng/include");
+    main_tests.addIncludeDir("src");
     main_tests.linkLibC();
     main_tests.setBuildMode(mode);
     main_tests.linkLibrary(nng_lib);
 
-    const exe = b.addExecutable("server", "src/server.zig");
-    exe.addIncludeDir("nng/include");
-    exe.linkSystemLibrary("nng"); //Todo, link to locally build library
-    exe.linkLibC();
-    exe.install();
+    const exe_server = b.addExecutable("server", "src/server.zig");
+    exe_server.addIncludeDir("nng/include");
+    exe_server.addIncludeDir("src");
+    exe_server.linkSystemLibrary("nng"); //Todo, link to locally build library
+    exe_server.linkLibC();
+    exe_server.install();
 
     const exe_client = b.addExecutable("client", "src/client.zig");
     exe_client.addIncludeDir("nng/include");
+    exe_client.addIncludeDir("src");
     exe_client.linkSystemLibrary("nng"); //Todo, link to locally build library
     exe_client.linkLibC();
     exe_client.install();
+
+    const exe_node = b.addExecutable("node", "src/node.zig");
+    exe_node.addIncludeDir("nng/include");
+    exe_node.addIncludeDir("src");
+    exe_node.linkSystemLibrary("nng"); //Todo, link to locally build library
+    exe_node.linkLibC();
+    exe_node.install();
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);
