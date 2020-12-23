@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("c.zig").c;
+const warn = std.debug.warn;
 
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
@@ -37,11 +38,6 @@ pub fn request(address: [*]const u8, msec: u32) void {
         fatal("nng_msg_append_u32", r);
     }
 
-    r = c.nng_msg_append_u32(msg, 24);
-    if (r != 0) {
-        fatal("nng_msg_append_u32", r);
-    }
-
     r = c.nng_sendmsg(sock, msg, 0);
     if (r != 0) {
         fatal("nng_sendmsg", r);
@@ -54,6 +50,12 @@ pub fn request(address: [*]const u8, msec: u32) void {
 
     const end = c.nng_clock();
 
+    var len = c.nng_msg_len(msg);
+
+    var body = @ptrCast([*]u8, c.nng_msg_body(msg));
+    var body_slice = body[0..len];
+
+    warn("received: {} :{}\n", .{ body_slice, len });
     std.debug.warn("Request took {} milliseconds.\n", .{end - start});
 }
 

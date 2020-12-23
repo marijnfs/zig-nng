@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("c.zig").c;
+const warn = std.debug.warn;
 
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
@@ -8,17 +9,20 @@ fn fatal(msg: []const u8, code: c_int) void {
     std.os.exit(1);
 }
 
-pub fn request(address: [*]const u8, msec: u32) void {
+pub fn serve(address: [:0]const u8, msec: u32) void {
     var sock: c.nng_socket = undefined;
     var r: c_int = undefined;
 
-    r = c.nng_req0_open(&sock);
+    r = c.nng_rep0_open(&sock);
     if (r != 0) {
         fatal("nng_req0_open", r);
     }
     defer _ = c.nng_close(sock);
 
-    r = c.nng_dial(sock, address, 0, 0);
+    // var listener: ?*c.nng_listener = undefined;
+
+    warn("Connecting to address {}\n", .{address});
+    r = c.nng_listen(sock, address, 0, 0);
     if (r != 0) {
         fatal("nng_dial", r);
     }
@@ -32,25 +36,44 @@ pub fn request(address: [*]const u8, msec: u32) void {
     }
     defer c.nng_msg_free(msg);
 
-    r = c.nng_msg_append_u32(msg, msec);
+    r = c.nng_recvmsg(sock, &msg, 0);
     if (r != 0) {
-        fatal("nng_msg_append_u32", r);
+        fatal("nng_recvmsg", r);
     }
 
-    r = c.nng_msg_append_u32(msg, 24);
-    if (r != 0) {
-        fatal("nng_msg_append_u32", r);
-    }
+    warn("msg: {}\n", .{msg});
 
     r = c.nng_sendmsg(sock, msg, 0);
     if (r != 0) {
         fatal("nng_sendmsg", r);
     }
 
-    r = c.nng_recvmsg(sock, &msg, 0);
-    if (r != 0) {
-        fatal("nng_recvmsg", r);
-    }
+    // var msg: ?*c.nng_msg = undefined;
+    // r = c.nng_msg_alloc(&msg, 0);
+    // if (r != 0) {
+    //     fatal("nng_msg_alloc", r);
+    // }
+    // defer c.nng_msg_free(msg);
+
+    // r = c.nng_msg_append_u32(msg, msec);
+    // if (r != 0) {
+    //     fatal("nng_msg_append_u32", r);
+    // }
+
+    // r = c.nng_msg_append_u32(msg, 24);
+    // if (r != 0) {
+    //     fatal("nng_msg_append_u32", r);
+    // }
+
+    // r = c.nng_sendmsg(sock, msg, 0);
+    // if (r != 0) {
+    //     fatal("nng_sendmsg", r);
+    // }
+
+    // r = c.nng_recvmsg(sock, &msg, 0);
+    // if (r != 0) {
+    //     fatal("nng_recvmsg", r);
+    // }
 
     const end = c.nng_clock();
 
@@ -72,5 +95,5 @@ pub fn main() !void {
 
     const msec = try std.fmt.parseUnsigned(u32, args[2], 10);
 
-    request(address.ptr, msec);
+    serve(address, msec);
 }
