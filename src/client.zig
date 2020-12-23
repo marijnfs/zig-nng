@@ -9,20 +9,37 @@ fn fatal(msg: []const u8, code: c_int) void {
     std.os.exit(1);
 }
 
-pub fn request(address: [*]const u8, msec: u32) void {
+fn nng_req0_open(sock: *c.nng_socket) !void {
+    var r: c_int = undefined;
+    r = c.nng_req0_open(sock);
+    if (r != 0) {
+        fatal("nng_req0_open", r);
+        return error.Fail;
+    }
+}
+
+fn nng_dial(sock: *c.nng_socket, address: [:0]const u8) !void {
+    var r: c_int = undefined;
+    r = c.nng_dial(sock.*, address, 0, 0);
+    if (r != 0) {
+        fatal("nng_dial", r);
+        return error.Fail;
+    }
+}
+
+pub fn request(address: [:0]const u8, msec: u32) !void {
     var sock: c.nng_socket = undefined;
     var r: c_int = undefined;
 
-    r = c.nng_req0_open(&sock);
-    if (r != 0) {
-        fatal("nng_req0_open", r);
-    }
+    // r = c.nng_req0_open(&sock);
+    // if (r != 0) {
+    //     fatal("nng_req0_open", r);
+    // }
+
+    try nng_req0_open(&sock);
     defer _ = c.nng_close(sock);
 
-    r = c.nng_dial(sock, address, 0, 0);
-    if (r != 0) {
-        fatal("nng_dial", r);
-    }
+    try nng_dial(&sock, address);
 
     const start = c.nng_clock();
 
@@ -74,5 +91,5 @@ pub fn main() !void {
 
     const msec = try std.fmt.parseUnsigned(u32, args[2], 10);
 
-    request(address.ptr, msec);
+    try request(address, msec);
 }
