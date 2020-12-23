@@ -1,6 +1,7 @@
 const std = @import("std");
 const Builder = std.build.Builder;
 const builtin = @import("builtin");
+const Target = std.build.Target;
 
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
@@ -9,9 +10,23 @@ pub fn build(b: *Builder) void {
     // lib.setBuildMode(mode);
     // lib.linkLibC();
     // lib.install();
+    const target = b.standardTargetOptions(.{
+        .whitelist = &[_]Target{
+            .{
+                .cpu_arch = .x86_64,
+                .os_tag = .linux,
+                .abi = .musl,
+            },
+            .{
+                .cpu_arch = .x86_64,
+                .os_tag = .windows,
+                .abi = .gnu,
+            },
+        },
+    });
 
-    const nng_lib = getLibrary(b, mode);
-    nng_lib.install();
+    // const nng_lib = getLibrary(b, mode, target);
+    // nng_lib.install();
 
     var main_tests = b.addTest("src/main.zig");
     main_tests.addIncludeDir("nng/include");
@@ -48,12 +63,12 @@ pub fn build(b: *Builder) void {
 pub fn getLibrary(
     b: *Builder,
     mode: builtin.Mode,
-    // target: std.build.Target,
+    target: std.build.Target,
 ) *std.build.LibExeObjStep {
     const lib_cflags = &[_][]const u8{"-std=c99"};
     const lib = b.addStaticLibrary("nng", null);
     lib.setBuildMode(mode);
-    // lib.setTarget(target);
+    lib.setTarget(target);
     lib.linkSystemLibrary("c");
 
     lib.defineCMacro("NNG_PLATFORM_POSIX");
