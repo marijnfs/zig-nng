@@ -1,6 +1,268 @@
 const std = @import("std");
+const ArrayList = std.ArrayList;
+const AutoHashMap = std.AutoHashMap;
 const c = @import("c.zig").c;
 const warn = std.debug.warn;
+
+const allocator = std.heap.page_allocator;
+const ID_SIZE = 32;
+const ID = [32]u8;
+
+const N_INCOMING_WORKERS = 16;
+const N_OUTGOING_WORKERS = 16;
+
+// We are currently going for 64kb blocks
+const BIT_PER_BLOCK = 16;
+const BLOCK_SIZE = 1 << BIT_PER_BLOCK;
+const ROUTING_TABLE_SIZE = 16;
+
+const Block = []u8;
+
+const Connection = struct {
+    addr: c.nng_sockaddr,
+};
+
+// Global Resources
+
+// Database which holds known items
+var database = std.AutoHashMap(ID, Block).init(allocator);
+
+var known_addresses = std.ArrayList([:0]u8).init(allocator);
+
+const routing_table = [ROUTING_TABLE_SIZE]?*c.nng_socket;
+
+var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
+var outgoing_workers: std.ArrayList(*OutWork) = undefined;
+
+var main_socket: c.nng_socket = undefined;
+
+fn init() !void {
+    warn("Init\n", .{});
+}
+
+// All operand imply a ID argument
+// ID can refer to a peer, or item, depending on operand
+// Some arguments have an additional number
+const Operand = enum {
+    GetID, //get ID of connecting node
+    Get, //get general message. Arg is peer ID
+    GetPrevPeer,
+    GetNextPeer,
+    GetPrevItem, //number can be supplied to get more than one
+    GetNextItem, //number can be supplied to get more than one
+    GetItem,
+};
+
+const InWork = struct {
+    const State = enum {
+        Init,
+        Recv,
+        Wait,
+        Send,
+    };
+
+    state: State,
+    aio: ?*c.nng_aio,
+    msg: ?*c.nng_msg,
+    ctx: c.nng_ctx,
+
+    pub fn toOpaque(w: *InWork) *c_void {
+        return @ptrCast(*c_void, w);
+    }
+
+    pub fn fromOpaque(o: ?*c_void) *InWork {
+        return @ptrCast(*InWork, @alignCast(@alignOf(*InWork), o));
+    }
+
+    pub fn alloc(sock: c.nng_socket) *InWork {
+        var o = c.nng_alloc(@sizeOf(InWork));
+        if (o == null) {
+            fatal("nng_alloc", 2); // c.NNG_ENOMEM
+        }
+        var w = InWork.fromOpaque(o);
+
+        const r1 = c.nng_aio_alloc(&w.aio, inWorkCallback, w);
+        if (r1 != 0) {
+            fatal("nng_aio_alloc", r1);
+        }
+
+        const r2 = c.nng_ctx_open(&w.ctx, sock);
+        if (r2 != 0) {
+            fatal("nng_ctx_open", r2);
+        }
+
+        w.state = State.Init;
+        return w;
+    }
+};
+
+fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
+    const work = InWork.fromOpaque(arg);
+    switch (work.state) {
+        InWork.State.Init => {
+            work.state = InWork.State.Recv;
+            c.nng_ctx_recv(work.ctx, work.aio);
+        },
+
+        InWork.State.Recv => {
+            const r1 = c.nng_aio_result(work.aio);
+            if (r1 != 0) {
+                fatal("nng_ctx_recv", r1);
+            }
+
+            const msg = c.nng_aio_get_msg(work.aio);
+
+            var operand: u32 = undefined;
+            const r2 = c.nng_msg_trim_u32(msg, &operand);
+            if (r2 != 0) {
+                c.nng_msg_free(msg);
+                c.nng_ctx_recv(work.ctx, work.aio);
+                return;
+            }
+
+            warn("Operand: {}\n", .{operand});
+
+            work.msg = msg;
+            work.state = InWork.State.Wait;
+        },
+
+        InWork.State.Wait => {
+            c.nng_aio_set_msg(work.aio, work.msg);
+            work.msg = null;
+            work.state = InWork.State.Send;
+            c.nng_ctx_send(work.ctx, work.aio);
+        },
+
+        InWork.State.Send => {
+            const r = c.nng_aio_result(work.aio);
+            if (r != 0) {
+                c.nng_msg_free(work.msg);
+                fatal("nng_ctx_send", r);
+            }
+            work.state = InWork.State.Recv;
+            c.nng_ctx_recv(work.ctx, work.aio);
+        },
+    }
+}
+
+const OutWork = struct {
+    const State = enum {
+        Unconnected,
+        Init,
+        GetPrevPeer,
+        GetNextPeer,
+    };
+
+    state: State,
+    aio: ?*c.nng_aio,
+    msg: ?*c.nng_msg,
+    ctx: c.nng_ctx,
+
+    id: ID, //ID for operation
+    inWork: ?*InWork, //In work response Callback struct
+    arg: i64,
+
+    pub fn toOpaque(w: *OutWork) *c_void {
+        return @ptrCast(*c_void, w);
+    }
+
+    pub fn fromOpaque(o: ?*c_void) *OutWork {
+        return @ptrCast(*OutWork, @alignCast(@alignOf(*OutWork), o));
+    }
+
+    pub fn alloc(sock: c.nng_socket, id: ID, inWork: ?*InWork, arg: i64) *OutWork {
+        var o = c.nng_alloc(@sizeOf(OutWork));
+        if (o == null) {
+            fatal("nng_alloc", 2); // c.NNG_ENOMEM
+        }
+        var w = OutWork.fromOpaque(o);
+
+        w.state = State.Init;
+        w.id = id;
+        w.arg = arg;
+
+        const r1 = c.nng_aio_alloc(&w.aio, outWorkCallback, w);
+        if (r1 != 0) {
+            fatal("nng_aio_alloc", r1);
+        }
+
+        const r2 = c.nng_ctx_open(&w.ctx, sock);
+        if (r2 != 0) {
+            fatal("nng_ctx_open", r2);
+        }
+
+        return w;
+    }
+};
+
+fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
+    const work = OutWork.fromOpaque(arg);
+    switch (work.state) {
+        OutWork.State.Init => {
+            work.state = OutWork.State.Recv;
+            c.nng_ctx_recv(work.ctx, work.aio);
+        },
+
+        OutWork.State.Send => {
+            const r = c.nng_aio_result(work.aio);
+            if (r != 0) {
+                c.nng_msg_free(work.msg);
+                fatal("nng_ctx_send", r);
+            }
+            work.state = OutWork.State.Recv;
+            c.nng_ctx_recv(work.ctx, work.aio);
+        },
+
+        OutWork.State.Wait => {
+            c.nng_aio_set_msg(work.aio, work.msg);
+            work.msg = null;
+            work.state = OutWork.State.Send;
+            c.nng_ctx_send(work.ctx, work.aio);
+        },
+
+        OutWork.State.Recv => {
+            const r1 = c.nng_aio_result(work.aio);
+            if (r1 != 0) {
+                fatal("nng_ctx_recv", r1);
+            }
+
+            const msg = c.nng_aio_get_msg(work.aio);
+
+            var when: u32 = undefined;
+            var what: u32 = undefined;
+
+            const r2 = c.nng_msg_trim_u32(msg, &when);
+            if (r2 != 0) {
+                c.nng_msg_free(msg);
+                c.nng_ctx_recv(work.ctx, work.aio);
+                return;
+            }
+
+            const r3 = c.nng_msg_trim_u32(msg, &what);
+            if (r3 != 0) {
+                c.nng_msg_free(msg);
+                c.nng_ctx_recv(work.ctx, work.aio);
+                return;
+            }
+
+            work.msg = msg;
+            work.state = OutWork.State.Wait;
+            std.debug.warn("what: {}\n", .{what});
+            c.nng_sleep_aio(@bitCast(i32, when), work.aio);
+        },
+    }
+}
+
+const InternalWork = struct {
+    const State = enum {};
+};
+
+fn sockToString(addr: c.nng_sockaddr) [:0]u8 {
+    if (addr.s_family == c.NNG_AF_INET) {
+        var in_addr = addr.s_in.sa_addr;
+        return fmt.allocPrint(allocator, "tcp://{}", .{in_addr});
+    }
+}
 
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
@@ -9,91 +271,36 @@ fn fatal(msg: []const u8, code: c_int) void {
     std.os.exit(1);
 }
 
-pub fn serve(address: [:0]const u8, msec: u32) void {
-    var sock: c.nng_socket = undefined;
-    var r: c_int = undefined;
-
-    r = c.nng_rep0_open(&sock);
-    if (r != 0) {
-        fatal("nng_req0_open", r);
-    }
-    defer _ = c.nng_close(sock);
-
-    // var listener: ?*c.nng_listener = undefined;
-
-    warn("Connecting to address {}\n", .{address});
-    r = c.nng_listen(sock, address, 0, 0);
-    if (r != 0) {
-        fatal("nng_dial", r);
-    }
-
-    const start = c.nng_clock();
-
-    var msg: ?*c.nng_msg = undefined;
-    r = c.nng_msg_alloc(&msg, 0);
-    if (r != 0) {
-        fatal("nng_msg_alloc", r);
-    }
-    defer c.nng_msg_free(msg);
-
-    r = c.nng_recvmsg(sock, &msg, 0);
-    if (r != 0) {
-        fatal("nng_recvmsg", r);
-    }
-
-    warn("msg: {}\n", .{msg});
-
-    r = c.nng_sendmsg(sock, msg, 0);
-    if (r != 0) {
-        fatal("nng_sendmsg", r);
-    }
-
-    // var msg: ?*c.nng_msg = undefined;
-    // r = c.nng_msg_alloc(&msg, 0);
-    // if (r != 0) {
-    //     fatal("nng_msg_alloc", r);
-    // }
-    // defer c.nng_msg_free(msg);
-
-    // r = c.nng_msg_append_u32(msg, msec);
-    // if (r != 0) {
-    //     fatal("nng_msg_append_u32", r);
-    // }
-
-    // r = c.nng_msg_append_u32(msg, 24);
-    // if (r != 0) {
-    //     fatal("nng_msg_append_u32", r);
-    // }
-
-    // r = c.nng_sendmsg(sock, msg, 0);
-    // if (r != 0) {
-    //     fatal("nng_sendmsg", r);
-    // }
-
-    // r = c.nng_recvmsg(sock, &msg, 0);
-    // if (r != 0) {
-    //     fatal("nng_recvmsg", r);
-    // }
-
-    const end = c.nng_clock();
-
-    std.debug.warn("Request took {} milliseconds.\n", .{end - start});
-}
-
 pub fn main() !void {
-    var allocator = std.heap.c_allocator;
+    try init();
+
     var args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
     if (args.len <= 2) {
-        std.debug.warn("usage: {} <url> <msec>\n", .{args[0]});
+        std.debug.warn("usage: {} <url>\n", .{args[0]});
         std.os.exit(1);
     }
 
     const address = try std.cstr.addNullByte(allocator, args[1]);
     defer allocator.free(address);
 
-    const msec = try std.fmt.parseUnsigned(u32, args[2], 10);
+    try known_addresses.append(address);
 
-    serve(address, msec);
+    // Setup incoming port
+    const local_address = "tcp://localhost:8123";
+
+    const r1 = c.nng_rep0_open(&main_socket);
+    if (r1 != 0) {
+        fatal("nng_rep0_open", r1);
+    }
+
+    for (incoming_workers) |*w| {
+        w.* = InWork.alloc(main_socket);
+    }
+
+    const r2 = c.nng_listen(main_socket, address, 0, 0);
+    if (r2 != 0) {
+        fatal("nng_listen", r2);
+    }
 }
