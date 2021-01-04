@@ -54,58 +54,13 @@ const Work = extern struct {
 fn serverCallback(arg: ?*c_void) callconv(.C) void {
     const work = Work.fromOpaque(arg);
     switch (work.state) {
-        Work.State.Init => {
-            work.state = Work.State.Recv;
-            c.nng_ctx_recv(work.ctx, work.aio);
-        },
+        Work.State.Init => {},
 
-        Work.State.Recv => {
-            const r1 = c.nng_aio_result(work.aio);
-            if (r1 != 0) {
-                fatal("nng_ctx_recv", r1);
-            }
+        Work.State.Recv => {},
 
-            const msg = c.nng_aio_get_msg(work.aio);
+        Work.State.Wait => {},
 
-            var when: u32 = undefined;
-            var what: u32 = undefined;
-
-            const r2 = c.nng_msg_trim_u32(msg, &when);
-            if (r2 != 0) {
-                c.nng_msg_free(msg);
-                c.nng_ctx_recv(work.ctx, work.aio);
-                return;
-            }
-
-            const r3 = c.nng_msg_trim_u32(msg, &what);
-            if (r3 != 0) {
-                c.nng_msg_free(msg);
-                c.nng_ctx_recv(work.ctx, work.aio);
-                return;
-            }
-
-            work.msg = msg;
-            work.state = Work.State.Wait;
-            std.debug.warn("what: {}\n", .{what});
-            c.nng_sleep_aio(@bitCast(i32, when), work.aio);
-        },
-
-        Work.State.Wait => {
-            c.nng_aio_set_msg(work.aio, work.msg);
-            work.msg = null;
-            work.state = Work.State.Send;
-            c.nng_ctx_send(work.ctx, work.aio);
-        },
-
-        Work.State.Send => {
-            const r = c.nng_aio_result(work.aio);
-            if (r != 0) {
-                c.nng_msg_free(work.msg);
-                fatal("nng_ctx_send", r);
-            }
-            work.state = Work.State.Recv;
-            c.nng_ctx_recv(work.ctx, work.aio);
-        },
+        Work.State.Send => {},
     }
 }
 
