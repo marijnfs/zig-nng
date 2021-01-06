@@ -33,7 +33,8 @@ pub fn build(b: *Builder) void {
     main_tests.addIncludeDir("src");
     main_tests.linkLibC();
     main_tests.setBuildMode(mode);
-    main_tests.linkLibrary(nng_lib);
+    main_tests.linkSystemLibrary("nng");
+    // main_tests.linkLibrary(nng_lib);
 
     const exe_server = b.addExecutable("server", "src/server.zig");
     exe_server.addIncludeDir("nng/include");

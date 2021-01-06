@@ -182,13 +182,15 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             const msg = c.nng_aio_get_msg(work.aio);
 
-            var operand: u32 = undefined;
-            const r2 = c.nng_msg_trim_u32(msg, &operand);
-            if (r2 != 0) {
-                c.nng_msg_free(msg);
-                c.nng_ctx_recv(work.ctx, work.aio);
-                return;
-            }
+            var operand = blk: {
+                var int_operand: u32 = 0;
+                const r2 = c.nng_msg_trim_u32(msg, &int_operand);
+                if (r2 != 0) {
+                    c.nng_msg_free(msg);
+                    c.nng_ctx_recv(work.ctx, work.aio);
+                }
+                break :blk @intToEnum(Operand, @intCast(@TagType(Operand), int_operand));
+            };
 
             warn("Operand: {}\n", .{operand});
 
