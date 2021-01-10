@@ -23,59 +23,13 @@ const ROUTING_TABLE_SIZE = 16;
 
 const Block = []u8;
 
-const Connection = struct {
-    id: ID,
-    socket: c.nng_socket,
-};
-
-const PingID = struct {
-    address: [:0]const u8,
-};
-
-const Job = union(enum) {
-    ping_id: PingID,
-    check_connections: void,
-
-    fn work(self: *Job) void {
-        switch (self.*) {
-            .ping_id => {
-                warn("Ping: {s}\n", .{self.ping_id});
-            },
-            .check_connections => {},
-        }
-    }
-};
-
-fn event_queue_processor(context: void) void {
-    while (true) {
-        if (event_queue.pop()) |*job| {
-            job.work();
-        } else {
-            warn("sleeping\n", .{});
-            c.nng_msleep(100);
-        }
-    }
-}
-
-fn xor(id1: ID, id2: ID) ID {
-    var result: ID = id1;
-    for (result) |r, i| {
-        result[i] = r ^ id2[i];
-    }
-    return result;
-}
-
-fn hash(data: []const u8) ID {
-    var result: ID = undefined;
-    crypto.hash.Blake3.hash(data, result[0..], .{});
-    return result;
-}
-
 var my_id: ID = undefined;
-
+var closest_distance: ID = undefined;
 var event_queue = AtomicQueue(Job).init(allocator);
+
+// Threads
 var event_thread: *Thread = undefined;
-// Global Resources
+var timer_thread: *Thread = undefined;
 
 // Database which holds known items
 var database = std.AutoHashMap(ID, Block).init(allocator);
@@ -96,6 +50,64 @@ var main_socket: c.nng_socket = undefined;
 
 var rng = std.rand.DefaultPrng.init(0);
 
+const Connection = struct {
+    id: ID,
+    socket: c.nng_socket,
+};
+
+const PingID = struct {
+    address: [:0]const u8,
+};
+
+const SendMessage = struct {
+    msg: *c.nng_msg,
+    id: ID,
+    uuid: u64, //internal processing id
+};
+
+const Job = union(enum) {
+    ping_id: PingID,
+    check_connections: void,
+
+    fn work(self: *Job) void {
+        switch (self.*) {
+            .ping_id => {
+                warn("Ping: {s}\n", .{self.ping_id});
+            },
+            .check_connections => {},
+        }
+    }
+};
+
+fn event_queue_threadfunc(context: void) void {
+    while (true) {
+        if (event_queue.pop()) |*job| {
+            job.work();
+        } else {
+            warn("sleeping\n", .{});
+            c.nng_msleep(100);
+        }
+    }
+}
+
+fn xor(id1: ID, id2: ID) ID {
+    var result: ID = id1;
+    for (result) |r, i| {
+        result[i] = r ^ id2[i];
+    }
+    return result;
+}
+
+fn less(id1: ID, id2: ID) bool {
+    return std.mem.order(u8, id1, id2) == .lt;
+}
+
+fn hash(data: []const u8) ID {
+    var result: ID = undefined;
+    crypto.hash.Blake3.hash(data, result[0..], .{});
+    return result;
+}
+
 fn rand_id() ID {
     var id: ID = undefined;
     rng.random.bytes(id[0..]);
@@ -105,8 +117,10 @@ fn rand_id() ID {
 fn init() !void {
     warn("Init\n", .{});
     my_id = rand_id();
+    std.mem.set(u8, closest_distance[0..], 0);
 
-    event_thread = try Thread.spawn({}, event_queue_processor);
+    event_thread = try Thread.spawn({}, event_queue_threadfunc);
+    timer_thread = try Thread.spawn({}, timer_threadfunc);
 }
 
 // All operand imply a ID argument
@@ -166,6 +180,26 @@ const InWork = struct {
     }
 };
 
+// unique id for message work
+var guid: u64 = 0;
+fn get_guid() u64 {
+    const order = @import("builtin").AtomicOrder.Monotonic;
+    var val = @atomicRmw(u64, &guid, .Add, 1, order);
+    return guid;
+}
+
+//thread to periodically queue work
+
+fn timer_threadfunc(context: void) !void {
+    warn("Timer thread\n", .{});
+    while (true) {
+        c.nng_msleep(3000);
+        try event_queue.push(Job{ .ping_id = .{ .address = "update" } });
+        warn("adding work\n", .{});
+        warn("guid: {}\n", .{get_guid()});
+    }
+}
+
 fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = InWork.fromOpaque(arg);
     switch (work.state) {
@@ -219,20 +253,18 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
 const OutWork = struct {
     const State = enum {
-        Unconnected,
-        Init,
-        GetPrevPeer,
-        GetNextPeer,
+        Unconnected, // Unconnected
+        Ready, // Ready to accept
+        Waiting, // Waiting for reply
     };
 
-    state: State,
+    state: State = Unconnected,
     aio: ?*c.nng_aio,
     msg: ?*c.nng_msg,
     ctx: c.nng_ctx,
 
-    operand: Operand,
-    id: ID, //ID for operation
-    inWork: ?*InWork, //In work response Callback struct
+    id: ID, //ID of connected node
+    guid: i64 = 0, //Internal processing id
 
     pub fn toOpaque(w: *OutWork) *c_void {
         return @ptrCast(*c_void, w);
@@ -333,5 +365,4 @@ pub fn main() !void {
 
     warn("end", .{});
     event_thread.wait();
-    c.nng_msleep(1000);
 }
