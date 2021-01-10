@@ -41,7 +41,7 @@ var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
 var known_addresses = std.ArrayList([:0]u8).init(allocator);
 
 // Our routing table
-const routing_table = [ROUTING_TABLE_SIZE]Connection;
+var routing_table = std.ArrayList(*Connection).init(allocator);
 
 var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
 var outgoing_workers: std.ArrayList(*OutWork) = undefined;
@@ -53,28 +53,117 @@ var rng = std.rand.DefaultPrng.init(0);
 const Connection = struct {
     id: ID,
     socket: c.nng_socket,
+    address: [:0]const u8,
+    n_workers: usize = 0,
+
+    fn id_known() bool {
+        for (id) |d| {
+            if (d != 0)
+                return true;
+        }
+        return false;
+    }
+
+    fn alloc() !*Connection {
+        return try allocator.create(Connection);
+    }
+
+    fn init(self: *Connection, address: [:0]const u8) void {
+        std.mem.set(u8, self.id[0..], 0);
+        self.address = address;
+    }
+
+    fn req_open(
+        self: *Connection,
+    ) !void {
+        var r: c_int = undefined;
+        r = c.nng_req0_open(&self.socket);
+        if (r != 0) {
+            fatal("nng_req0_open", r);
+            return error.Fail;
+        }
+    }
+
+    fn rep_open(self: *Connection) !void {
+        var r: c_int = undefined;
+        r = c.nng_rep0_open(self.sock);
+        if (r != 0) {
+            fatal("nng_req0_open", r);
+            return error.Fail;
+        }
+    }
+
+    fn dial(self: *Connection) !void {
+        var r: c_int = undefined;
+        r = c.nng_dial(self.socket, self.address, 0, 0);
+        if (r != 0) {
+            fatal("nng_dial", r);
+            return error.Fail;
+        }
+    }
+};
+
+const Store = struct {
+    id: ID,
+    data: []u8,
+};
+
+const Request = struct {
+    id: ID,
+    data: []u8,
 };
 
 const PingID = struct {
     address: [:0]const u8,
 };
 
+const Bootstrap = struct {
+    n: usize,
+};
+
+const Connect = struct {
+    address: [:0]const u8,
+};
+
 const SendMessage = struct {
-    msg: *c.nng_msg,
     id: ID,
     uuid: u64, //internal processing id
+    msg: *c.nng_msg,
 };
 
 const Job = union(enum) {
     ping_id: PingID,
-    check_connections: void,
+    store: Store,
+    request: Request,
+    bootstrap: Bootstrap,
+    connect: Connect,
 
-    fn work(self: *Job) void {
+    fn work(self: *Job) !void {
         switch (self.*) {
             .ping_id => {
                 warn("Ping: {s}\n", .{self.ping_id});
             },
-            .check_connections => {},
+            .store => {},
+            .request => {},
+            .bootstrap => {
+                var n = self.bootstrap.n;
+                if (n < known_addresses.items.len)
+                    n = known_addresses.items.len;
+
+                var i: usize = 0;
+                while (i < n) : (i += 1) {
+                    var address = known_addresses.items[i];
+                    try event_queue.push(Job{ .connect = .{ .address = address } });
+                }
+            },
+            .connect => {
+                var address = self.connect.address;
+                var conn = try Connection.alloc();
+                conn.init(address);
+                try conn.req_open();
+                try conn.dial();
+                try routing_table.append(conn);
+            },
         }
     }
 };
@@ -82,7 +171,9 @@ const Job = union(enum) {
 fn event_queue_threadfunc(context: void) void {
     while (true) {
         if (event_queue.pop()) |*job| {
-            job.work();
+            job.work() catch |e| {
+                warn("e {}\n", .{e});
+            };
         } else {
             warn("sleeping\n", .{});
             c.nng_msleep(100);
@@ -100,6 +191,11 @@ fn xor(id1: ID, id2: ID) ID {
 
 fn less(id1: ID, id2: ID) bool {
     return std.mem.order(u8, id1, id2) == .lt;
+}
+
+fn in_my_range(id: ID) bool {
+    var dist = xor(my_id, id);
+    return less(id, closest_distance);
 }
 
 fn hash(data: []const u8) ID {
@@ -345,7 +441,10 @@ pub fn main() !void {
     const address = try std.cstr.addNullByte(allocator, args[1]);
     defer allocator.free(address);
 
-    try known_addresses.append(address);
+    for (args[2..]) |out_addr| {
+        const out_addr_null = try std.cstr.addNullByte(allocator, out_addr);
+        try known_addresses.append(out_addr_null);
+    }
 
     const r1 = c.nng_rep0_open(&main_socket);
     if (r1 != 0) {
