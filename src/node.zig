@@ -23,33 +23,190 @@ const ROUTING_TABLE_SIZE = 16;
 
 const Block = []u8;
 
+const Guid = u64;
+
+var my_id: ID = undefined;
+var closest_distance: ID = undefined;
+var event_queue = AtomicQueue(Job).init(allocator);
+
+// Threads
+var event_thread: *Thread = undefined;
+var timer_thread: *Thread = undefined;
+
+// Database which holds known items
+var database = std.AutoHashMap(ID, Block).init(allocator);
+
+// Map holding ID -> Map
+var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
+
+// Known addresses to bootstrap
+var known_addresses = std.ArrayList([:0]u8).init(allocator);
+
+// Our routing table
+var routing_table = std.ArrayList(*Connection).init(allocator);
+
+var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
+var outgoing_workers: std.ArrayList(*OutWork) = undefined;
+
+var main_socket: c.nng_socket = undefined;
+
+var rng = std.rand.DefaultPrng.init(0);
+
 const Connection = struct {
     id: ID,
     socket: c.nng_socket,
-};
-
-const PingID = struct {
     address: [:0]const u8,
-};
+    n_workers: usize = 0,
+    guid: Guid,
 
-const Job = union(enum) {
-    ping_id: PingID,
-    check_connections: void,
+    fn id_known() bool {
+        for (id) |d| {
+            if (d != 0)
+                return true;
+        }
+        return false;
+    }
 
-    fn work(self: *Job) void {
-        switch (self.*) {
-            .ping_id => {
-                warn("Ping: {s}\n", .{self.ping_id});
-            },
-            .check_connections => {},
+    fn alloc() !*Connection {
+        return try allocator.create(Connection);
+    }
+
+    fn init(self: *Connection, address: [:0]const u8) void {
+        std.mem.set(u8, self.id[0..], 0);
+        self.address = address;
+        self.guid = get_guid();
+    }
+
+    fn req_open(
+        self: *Connection,
+    ) !void {
+        var r: c_int = undefined;
+        r = c.nng_req0_open(&self.socket);
+        if (r != 0) {
+            fatal("nng_req0_open", r);
+            return error.Fail;
+        }
+    }
+
+    fn rep_open(self: *Connection) !void {
+        var r: c_int = undefined;
+        r = c.nng_rep0_open(self.sock);
+        if (r != 0) {
+            fatal("nng_req0_open", r);
+            return error.Fail;
+        }
+    }
+
+    fn dial(self: *Connection) !void {
+        warn("dialing {s}\n", .{self.address});
+        var r: c_int = undefined;
+        r = c.nng_dial(self.socket, self.address, 0, 0);
+        if (r != 0) {
+            fatal("nng_dial", r);
+            return error.Fail;
         }
     }
 };
 
-fn event_queue_processor(context: void) void {
+const Store = struct {
+    src_id: u64, //source of request
+    id: ID,
+    data: []u8,
+};
+
+const Request = struct {
+    id: ID,
+    data: []u8,
+};
+
+const PingID = struct {
+    guid: Guid, //target connection guid
+};
+
+const Bootstrap = struct {
+    n: usize,
+};
+
+const Connect = struct {
+    address: [:0]const u8,
+};
+
+const SendMessage = struct {
+    id: ID, //recipient
+    guid: Guid, //internal processing id
+    msg: *c.nng_msg,
+};
+
+const HandleResponse = struct {
+    guid: ID, //id from response
+    msg: *c.nng_msg, //message to process
+};
+
+fn connection_by_guid(guid: Guid) !*Connection {
+    for (routing_table.items) |conn| {
+        if (conn.guid == guid) {
+            return conn;
+        }
+    }
+    return error.NotFound;
+}
+
+const Job = union(enum) {
+    ping_id: PingID,
+    store: Store,
+    request: Request,
+    bootstrap: Bootstrap,
+    connect: Connect,
+    handle_response: HandleResponse,
+
+    fn work(self: *Job) !void {
+        switch (self.*) {
+            .ping_id => {
+                warn("Ping: {}\n", .{self.ping_id});
+                const guid = self.ping_id.guid;
+                var conn = connection_by_guid(guid);
+            },
+            .store => {
+                const data_id = self.store.id;
+                if (in_my_range(data_id)) //store here
+                {} else {
+                    const src = self.store.src_id;
+                }
+            },
+            .request => {},
+            .bootstrap => {
+                warn("{}\n", .{known_addresses.items});
+                var n = self.bootstrap.n;
+                if (known_addresses.items.len < n)
+                    n = known_addresses.items.len;
+
+                var i: usize = 0;
+                while (i < n) : (i += 1) {
+                    var address = known_addresses.items[i];
+                    try event_queue.push(Job{ .connect = .{ .address = address } });
+                }
+            },
+            .connect => {
+                var address = self.connect.address;
+                var conn = try Connection.alloc();
+                conn.init(address);
+                try conn.req_open();
+                try conn.dial();
+
+                try routing_table.append(conn);
+                try event_queue.push(Job{ .ping_id = .{ .guid = conn.guid } });
+            },
+            .handle_response => {},
+        }
+    }
+};
+
+fn event_queue_threadfunc(context: void) void {
     while (true) {
         if (event_queue.pop()) |*job| {
-            job.work();
+            job.work() catch |e| {
+                warn("e {}\n", .{e});
+            };
         } else {
             warn("sleeping\n", .{});
             c.nng_msleep(100);
@@ -65,36 +222,20 @@ fn xor(id1: ID, id2: ID) ID {
     return result;
 }
 
+fn less(id1: ID, id2: ID) bool {
+    return std.mem.order(u8, id1[0..], id2[0..]) == .lt;
+}
+
+fn in_my_range(id: ID) bool {
+    var dist = xor(my_id, id);
+    return less(id, closest_distance);
+}
+
 fn hash(data: []const u8) ID {
     var result: ID = undefined;
     crypto.hash.Blake3.hash(data, result[0..], .{});
     return result;
 }
-
-var my_id: ID = undefined;
-
-var event_queue = AtomicQueue(Job).init(allocator);
-var event_thread: *Thread = undefined;
-// Global Resources
-
-// Database which holds known items
-var database = std.AutoHashMap(ID, Block).init(allocator);
-
-// Map holding ID -> Map
-var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
-
-// Known addresses to bootstrap
-var known_addresses = std.ArrayList([:0]u8).init(allocator);
-
-// Our routing table
-const routing_table = [ROUTING_TABLE_SIZE]Connection;
-
-var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
-var outgoing_workers: std.ArrayList(*OutWork) = undefined;
-
-var main_socket: c.nng_socket = undefined;
-
-var rng = std.rand.DefaultPrng.init(0);
 
 fn rand_id() ID {
     var id: ID = undefined;
@@ -105,8 +246,10 @@ fn rand_id() ID {
 fn init() !void {
     warn("Init\n", .{});
     my_id = rand_id();
+    std.mem.set(u8, closest_distance[0..], 0);
 
-    event_thread = try Thread.spawn({}, event_queue_processor);
+    event_thread = try Thread.spawn({}, event_queue_threadfunc);
+    timer_thread = try Thread.spawn({}, timer_threadfunc);
 }
 
 // All operand imply a ID argument
@@ -135,6 +278,7 @@ const InWork = struct {
     aio: ?*c.nng_aio,
     msg: ?*c.nng_msg,
     ctx: c.nng_ctx,
+    guid: Guid,
 
     pub fn toOpaque(w: *InWork) *c_void {
         return @ptrCast(*c_void, w);
@@ -165,6 +309,29 @@ const InWork = struct {
         return w;
     }
 };
+
+fn ceil_log2(n: usize) usize {
+    return @floatToInt(usize, std.math.log2(@intToFloat(f64, n)));
+}
+
+// unique id for message work
+var root_guid: Guid = 0;
+fn get_guid() Guid {
+    const order = @import("builtin").AtomicOrder.Monotonic;
+    var val = @atomicRmw(u64, &root_guid, .Add, 1, order);
+    return val;
+}
+
+//thread to periodically queue work
+
+fn timer_threadfunc(context: void) !void {
+    warn("Timer thread\n", .{});
+    while (true) {
+        c.nng_msleep(3000);
+        warn("some guid: {}\n", .{get_guid()});
+        warn("{}\n", .{ceil_log2(0)});
+    }
+}
 
 fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = InWork.fromOpaque(arg);
@@ -221,20 +388,18 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
 const OutWork = struct {
     const State = enum {
-        Unconnected,
-        Init,
-        GetPrevPeer,
-        GetNextPeer,
+        Unconnected, // Unconnected
+        Ready, // Ready to accept
+        Waiting, // Waiting for reply
     };
 
-    state: State,
+    state: State = Unconnected,
     aio: ?*c.nng_aio,
     msg: ?*c.nng_msg,
     ctx: c.nng_ctx,
 
-    operand: Operand,
-    id: ID, //ID for operation
-    inWork: ?*InWork, //In work response Callback struct
+    id: ID, //ID of connected node
+    guid: i64 = 0, //Internal processing id
 
     pub fn toOpaque(w: *OutWork) *c_void {
         return @ptrCast(*c_void, w);
@@ -244,16 +409,15 @@ const OutWork = struct {
         return @ptrCast(*OutWork, @alignCast(@alignOf(*OutWork), o));
     }
 
-    pub fn alloc(sock: c.nng_socket, id: ID, inWork: ?*InWork, arg: i64) *OutWork {
+    pub fn alloc(sock: c.nng_socket) *OutWork {
         var o = c.nng_alloc(@sizeOf(OutWork));
         if (o == null) {
             fatal("nng_alloc", 2); // c.NNG_ENOMEM
         }
+
         var w = OutWork.fromOpaque(o);
 
         w.state = State.Init;
-        w.id = id;
-        w.arg = arg;
 
         const r1 = c.nng_aio_alloc(&w.aio, outWorkCallback, w);
         if (r1 != 0) {
@@ -264,6 +428,9 @@ const OutWork = struct {
         if (r2 != 0) {
             fatal("nng_ctx_open", r2);
         }
+
+        //set initial id to 0, will be filled in by request
+        std.mem.set(u8, w.id, 0);
 
         return w;
     }
@@ -315,7 +482,11 @@ pub fn main() !void {
     const address = try std.cstr.addNullByte(allocator, args[1]);
     defer allocator.free(address);
 
-    try known_addresses.append(address);
+    for (args[2..]) |out_addr| {
+        const out_addr_null = try std.cstr.addNullByte(allocator, out_addr);
+        warn("Adding {s} to known addresses\n", .{out_addr_null});
+        try known_addresses.append(out_addr_null);
+    }
 
     const r1 = c.nng_rep0_open(&main_socket);
     if (r1 != 0) {
@@ -331,9 +502,8 @@ pub fn main() !void {
         fatal("nng_listen", r2);
     }
 
-    try event_queue.push(Job{ .ping_id = .{ .address = "test" } });
+    try event_queue.push(Job{ .bootstrap = .{ .n = 4 } });
 
     warn("end", .{});
     event_thread.wait();
-    c.nng_msleep(1000);
 }
