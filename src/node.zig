@@ -23,7 +23,7 @@ const ROUTING_TABLE_SIZE = 16;
 
 const Block = []u8;
 
-const GUID = u64;
+const Guid = u64;
 
 var my_id: ID = undefined;
 var closest_distance: ID = undefined;
@@ -57,7 +57,7 @@ const Connection = struct {
     socket: c.nng_socket,
     address: [:0]const u8,
     n_workers: usize = 0,
-    guid: GUID,
+    guid: Guid,
 
     fn id_known() bool {
         for (id) |d| {
@@ -120,7 +120,7 @@ const Request = struct {
 };
 
 const PingID = struct {
-    guid: GUID, //target connection guid
+    guid: Guid, //target connection guid
 };
 
 const Bootstrap = struct {
@@ -132,18 +132,17 @@ const Connect = struct {
 };
 
 const SendMessage = struct {
-    id: ID,
-    uuid: u64, //internal processing id
+    id: ID, //recipient
+    guid: Guid, //internal processing id
     msg: *c.nng_msg,
 };
 
 const HandleResponse = struct {
-    id: ID,
-    uuid: u64, //internal processing id
-    msg: *c.nng_msg,
+    guid: ID, //id from response
+    msg: *c.nng_msg, //message to process
 };
 
-fn connection_by_guid(guid: GUID) !*Connection {
+fn connection_by_guid(guid: Guid) !*Connection {
     for (routing_table.items) |conn| {
         if (conn.guid == guid) {
             return conn;
@@ -279,6 +278,7 @@ const InWork = struct {
     aio: ?*c.nng_aio,
     msg: ?*c.nng_msg,
     ctx: c.nng_ctx,
+    guid: Guid,
 
     pub fn toOpaque(w: *InWork) *c_void {
         return @ptrCast(*c_void, w);
@@ -310,9 +310,13 @@ const InWork = struct {
     }
 };
 
+fn ceil_log2(n: usize) usize {
+    return @floatToInt(usize, std.math.log2(@intToFloat(f64, n)));
+}
+
 // unique id for message work
-var root_guid: GUID = 0;
-fn get_guid() GUID {
+var root_guid: Guid = 0;
+fn get_guid() Guid {
     const order = @import("builtin").AtomicOrder.Monotonic;
     var val = @atomicRmw(u64, &root_guid, .Add, 1, order);
     return val;
@@ -325,6 +329,7 @@ fn timer_threadfunc(context: void) !void {
     while (true) {
         c.nng_msleep(3000);
         warn("some guid: {}\n", .{get_guid()});
+        warn("{}\n", .{ceil_log2(0)});
     }
 }
 
