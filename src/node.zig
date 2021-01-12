@@ -13,8 +13,8 @@ const allocator = std.heap.page_allocator;
 const ID_SIZE = 32;
 const ID = [32]u8;
 
-const N_INCOMING_WORKERS = 16;
-const N_OUTGOING_WORKERS = 16;
+const N_INCOMING_WORKERS = 4;
+const N_OUTGOING_WORKERS = 4;
 
 // We are currently going for 64kb blocks
 const BIT_PER_BLOCK = 16;
@@ -46,7 +46,7 @@ var known_addresses = std.ArrayList([:0]u8).init(allocator);
 var routing_table = std.ArrayList(*Connection).init(allocator);
 
 var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
-var outgoing_workers: std.ArrayList(*OutWork) = undefined;
+var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
 
 var main_socket: c.nng_socket = undefined;
 
@@ -114,11 +114,6 @@ const Store = struct {
     data: []u8,
 };
 
-const Request = struct {
-    id: ID,
-    data: []u8,
-};
-
 const PingID = struct {
     guid: Guid, //target connection guid
 };
@@ -137,8 +132,19 @@ const SendMessage = struct {
     msg: *c.nng_msg,
 };
 
+const Reply = struct {
+    guid: Guid,
+    msg: *c.nng_msg,
+};
+
+const HandleRequest = struct {
+    operand: Operand,
+    guid: Guid,
+    msg: *c.nng_msg,
+};
+
 const HandleResponse = struct {
-    guid: ID, //id from response
+    guid: Guid, //id from response
     msg: *c.nng_msg, //message to process
 };
 
@@ -154,17 +160,47 @@ fn connection_by_guid(guid: Guid) !*Connection {
 const Job = union(enum) {
     ping_id: PingID,
     store: Store,
-    request: Request,
+    handle_request: HandleRequest,
     bootstrap: Bootstrap,
     connect: Connect,
     handle_response: HandleResponse,
+    reply: Reply,
 
     fn work(self: *Job) !void {
+        warn("job: {}\n", .{self});
+
         switch (self.*) {
             .ping_id => {
                 warn("Ping: {}\n", .{self.ping_id});
                 const guid = self.ping_id.guid;
                 var conn = connection_by_guid(guid);
+
+                warn("n outgoig: {}\n", .{outgoing_workers.items.len});
+                for (outgoing_workers.items) |out_worker| {
+                    warn("out_worker {}\n", .{out_worker});
+                    if (out_worker.accepting() and out_worker.guid == guid) {
+                        warn("send to guid: {}\n", .{guid});
+
+                        var msg: ?*c.nng_msg = undefined;
+                        const r = c.nng_msg_alloc(&msg, 0);
+                        if (r != 0) {
+                            fatal("nng_msg_alloc", r);
+                        }
+
+                        const r2 = c.nng_msg_append_u32(msg, @enumToInt(Operand.GetID));
+                        const r3 = c.nng_msg_append_u64(msg, guid);
+
+                        out_worker.send(msg.?);
+
+                        // ptrCast(*c_void, d);
+                        // const r2 = c.nng_msg_append();
+                        return;
+                    }
+                }
+
+                // If we get here nothing was sent, reschedule
+                warn("reschedule\n", .{});
+                try event_queue.push(self.*);
             },
             .store => {
                 const data_id = self.store.id;
@@ -173,7 +209,29 @@ const Job = union(enum) {
                     const src = self.store.src_id;
                 }
             },
-            .request => {},
+            .handle_request => {
+                const operand = self.handle_request.operand;
+                const guid = self.handle_request.guid;
+                var msg = self.handle_request.msg;
+
+                const len = c.nng_msg_len(msg);
+                const body = @ptrCast([*]u8, c.nng_msg_body(msg));
+                var body_slice = body[0..len];
+
+                switch (operand) {
+                    .GetID => {
+                        var reply_msg: ?*c.nng_msg = undefined;
+                        const r = c.nng_msg_alloc(&reply_msg, 0);
+                        if (r != 0) {
+                            fatal("nng_msg_alloc", r);
+                        }
+
+                        const r2 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len);
+
+                        try event_queue.push(Job{ .reply = .{ .guid = guid, .msg = reply_msg.? } });
+                    },
+                }
+            },
             .bootstrap => {
                 warn("{}\n", .{known_addresses.items});
                 var n = self.bootstrap.n;
@@ -194,9 +252,27 @@ const Job = union(enum) {
                 try conn.dial();
 
                 try routing_table.append(conn);
+
+                warn("connect on socket: {}\n", .{conn.socket});
+                var out_worker = OutWork.alloc(conn.socket);
+                out_worker.guid = conn.guid;
+                try outgoing_workers.append(out_worker);
+
                 try event_queue.push(Job{ .ping_id = .{ .guid = conn.guid } });
             },
-            .handle_response => {},
+            .reply => {
+                const guid = self.reply.guid;
+                const msg = self.reply.msg;
+                for (incoming_workers) |w| {
+                    if (w.guid == guid and w.state == .Wait) {
+                        warn("replying\n", .{});
+                        w.send(msg);
+                    }
+                }
+            },
+            .handle_response => {
+                warn("got: {}\n", .{self.handle_response});
+            },
         }
     }
 };
@@ -208,7 +284,7 @@ fn event_queue_threadfunc(context: void) void {
                 warn("e {}\n", .{e});
             };
         } else {
-            warn("sleeping\n", .{});
+            // warn("sleeping\n", .{});
             c.nng_msleep(100);
         }
     }
@@ -257,21 +333,21 @@ fn init() !void {
 // Some arguments have an additional number
 const Operand = enum {
     GetID, //get ID of connecting node
-    GetMessage, //get general message. Arg is peer ID
-    GetPrevPeer,
-    GetNextPeer,
-    GetPrevItem, //number can be supplied to get more than one
-    GetNextItem, //number can be supplied to get more than one
-    GetItem, //retrieve an item
-    Store, // Store command -> check hash to be sure.
+    // GetMessage, //get general message. Arg is peer ID
+    // GetPrevPeer,
+    // GetNextPeer,
+    // GetPrevItem, //number can be supplied to get more than one
+    // GetNextItem, //number can be supplied to get more than one
+    // GetItem, //retrieve an item
+    // Store, // Store command -> check hash to be sure.
 };
 
 const InWork = struct {
     const State = enum {
         Init,
+        Send,
         Recv,
         Wait,
-        Send,
     };
 
     state: State,
@@ -286,6 +362,12 @@ const InWork = struct {
 
     pub fn fromOpaque(o: ?*c_void) *InWork {
         return @ptrCast(*InWork, @alignCast(@alignOf(*InWork), o));
+    }
+
+    pub fn send(w: *InWork, msg: *c.nng_msg) void {
+        c.nng_aio_set_msg(w.aio, msg);
+        c.nng_ctx_send(w.ctx, w.aio);
+        w.state = .Send;
     }
 
     pub fn alloc(sock: c.nng_socket) *InWork {
@@ -311,11 +393,13 @@ const InWork = struct {
 };
 
 fn ceil_log2(n: usize) usize {
+    if (n == 0)
+        return 0;
     return @floatToInt(usize, std.math.log2(@intToFloat(f64, n)));
 }
 
 // unique id for message work
-var root_guid: Guid = 0;
+var root_guid: Guid = 1234;
 fn get_guid() Guid {
     const order = @import("builtin").AtomicOrder.Monotonic;
     var val = @atomicRmw(u64, &root_guid, .Add, 1, order);
@@ -329,19 +413,24 @@ fn timer_threadfunc(context: void) !void {
     while (true) {
         c.nng_msleep(3000);
         warn("some guid: {}\n", .{get_guid()});
-        warn("{}\n", .{ceil_log2(0)});
+        warn("ceil: {}\n", .{ceil_log2(1)});
     }
 }
 
 fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
+    warn("inwork callback\n", .{});
     const work = InWork.fromOpaque(arg);
     switch (work.state) {
-        InWork.State.Init => {
-            work.state = InWork.State.Recv;
+        .Init => {
             c.nng_ctx_recv(work.ctx, work.aio);
+            work.state = .Recv;
+        },
+        .Send => {
+            c.nng_ctx_recv(work.ctx, work.aio);
+            work.state = .Recv;
         },
 
-        InWork.State.Recv => {
+        .Recv => {
             const r1 = c.nng_aio_result(work.aio);
             if (r1 != 0) {
                 fatal("nng_ctx_recv", r1);
@@ -354,35 +443,36 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
                 const r2 = c.nng_msg_trim_u32(msg, &int_operand);
                 if (r2 != 0) {
                     c.nng_msg_free(msg);
-                    c.nng_ctx_recv(work.ctx, work.aio);
+                    return;
                 }
                 break :blk @intToEnum(Operand, @intCast(@TagType(Operand), int_operand));
             };
 
-            warn("Operand: {}\n", .{operand});
+            var guid: Guid = 0;
+            const r2 = c.nng_msg_trim_u64(msg, &guid);
 
-            work.msg = msg;
+            // set worker up for reply
+            work.guid = guid;
             work.state = InWork.State.Wait;
+
+            event_queue.push(Job{ .handle_request = .{ .operand = operand, .guid = guid, .msg = msg.? } }) catch |e| {
+                warn("error: {}\n", .{e});
+            };
 
             // Put this work in a callback!
         },
 
-        InWork.State.Wait => {
-            c.nng_aio_set_msg(work.aio, work.msg);
-            work.msg = null;
-            work.state = InWork.State.Send;
-            c.nng_ctx_send(work.ctx, work.aio);
-        },
+        .Wait => {},
 
-        InWork.State.Send => {
-            const r = c.nng_aio_result(work.aio);
-            if (r != 0) {
-                c.nng_msg_free(work.msg);
-                fatal("nng_ctx_send", r);
-            }
-            work.state = InWork.State.Recv;
-            c.nng_ctx_recv(work.ctx, work.aio);
-        },
+        // InWork.State.Send => {
+        //     const r = c.nng_aio_result(work.aio);
+        //     if (r != 0) {
+        //         c.nng_msg_free(work.msg);
+        //         fatal("nng_ctx_send", r);
+        //     }
+        //     work.state = InWork.State.Recv;
+        //     c.nng_ctx_recv(work.ctx, work.aio);
+        // },
     }
 }
 
@@ -390,16 +480,16 @@ const OutWork = struct {
     const State = enum {
         Unconnected, // Unconnected
         Ready, // Ready to accept
-        Waiting, // Waiting for reply
+        Send,
+        Wait, // Waiting for reply
     };
 
-    state: State = Unconnected,
+    state: State = .Unconnected,
     aio: ?*c.nng_aio,
-    msg: ?*c.nng_msg,
     ctx: c.nng_ctx,
 
     id: ID, //ID of connected node
-    guid: i64 = 0, //Internal processing id
+    guid: Guid = 0, //Internal processing id
 
     pub fn toOpaque(w: *OutWork) *c_void {
         return @ptrCast(*c_void, w);
@@ -409,6 +499,16 @@ const OutWork = struct {
         return @ptrCast(*OutWork, @alignCast(@alignOf(*OutWork), o));
     }
 
+    pub fn accepting(w: *OutWork) bool {
+        return w.state == .Ready;
+    }
+
+    pub fn send(w: *OutWork, msg: *c.nng_msg) void {
+        w.state = .Send;
+        c.nng_aio_set_msg(w.aio, msg);
+        c.nng_ctx_send(w.ctx, w.aio);
+    }
+
     pub fn alloc(sock: c.nng_socket) *OutWork {
         var o = c.nng_alloc(@sizeOf(OutWork));
         if (o == null) {
@@ -416,8 +516,6 @@ const OutWork = struct {
         }
 
         var w = OutWork.fromOpaque(o);
-
-        w.state = State.Init;
 
         const r1 = c.nng_aio_alloc(&w.aio, outWorkCallback, w);
         if (r1 != 0) {
@@ -430,7 +528,8 @@ const OutWork = struct {
         }
 
         //set initial id to 0, will be filled in by request
-        std.mem.set(u8, w.id, 0);
+        std.mem.set(u8, w.id[0..], 0);
+        w.state = State.Ready;
 
         return w;
     }
@@ -439,13 +538,27 @@ const OutWork = struct {
 fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = OutWork.fromOpaque(arg);
     switch (work.state) {
-        OutWork.State.Init => {},
+        .Ready => {},
+        .Send => {
+            c.nng_ctx_recv(work.ctx, work.aio);
+            work.state = .Wait;
+        },
 
-        OutWork.State.Send => {},
+        .Wait => {
+            const r1 = c.nng_aio_result(work.aio);
+            if (r1 != 0) {
+                fatal("nng_ctx_recv", r1);
+            }
 
-        OutWork.State.Wait => {},
+            const msg = c.nng_aio_get_msg(work.aio);
+            var guid: Guid = 0;
+            const r2 = c.nng_msg_trim_u64(msg, &guid);
+            event_queue.push(Job{ .handle_response = .{ .guid = guid, .msg = msg.? } }) catch unreachable;
+        },
 
-        OutWork.State.Recv => {},
+        .Unconnected => {
+            warn("Callback on Unconnected\n", .{});
+        },
     }
 }
 
