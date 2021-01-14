@@ -2,6 +2,18 @@ ZIG NNG
 =======
 NNG based DHT
 
+- Simple single event loop
+  - This seems to be the easiest, we make progress now.
+  - need to seperate code, dealing with different protocol issues.
+  - Maybe can now find a way to abstract things.
+
+Serialization
+=============
+Serialization is becoming a pain, maybe ptrcasts, order of serialization gets mixed up.
+Probably needs general serialization ala whats in std.zig
+
+
+
 Socket
 ======
 For reading:
