@@ -53,11 +53,12 @@ var main_socket: c.nng_socket = undefined;
 var rng = std.rand.DefaultPrng.init(0);
 
 const Connection = struct {
-    id: ID,
-    socket: c.nng_socket,
-    address: [:0]const u8,
-    n_workers: usize = 0,
     guid: Guid,
+    address: [:0]const u8,
+
+    id: ID = undefined,
+    n_workers: usize = 0,
+    socket: c.nng_socket = undefined,
 
     fn id_known() bool {
         for (id) |d| {
@@ -72,9 +73,12 @@ const Connection = struct {
     }
 
     fn init(self: *Connection, address: [:0]const u8) void {
+        self.* = Connection{
+            .address = address,
+            .guid = get_guid(),
+        };
+
         std.mem.set(u8, self.id[0..], 0);
-        self.address = address;
-        self.guid = get_guid();
     }
 
     fn req_open(
@@ -284,7 +288,26 @@ const Job = union(enum) {
                 }
             },
             .handle_response => {
+                const guid = self.handle_response.guid;
+                const msg = self.handle_response.msg;
                 warn("got: {}\n", .{self.handle_response});
+
+                var response_id: ID = undefined;
+                const len = c.nng_msg_len(msg);
+                if (len != response_id.len)
+                    fatal("nng msg trim", 2);
+
+                const body = @ptrCast([*]u8, c.nng_msg_body(msg));
+                var body_slice = body[0..len];
+                warn("body: {}\n", .{body_slice});
+                std.mem.copy(u8, response_id[0..], body_slice);
+                warn("response id: {}\n", .{response_id});
+
+                var conn = try connection_by_guid(guid);
+                warn("conn[{}] {}\n", .{ guid, conn });
+                conn.id = response_id;
+
+                warn("set conn to {}\n", .{conn});
             },
         }
     }
