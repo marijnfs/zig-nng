@@ -177,7 +177,8 @@ const Job = union(enum) {
                 const guid = self.ping_id.guid;
                 var conn = connection_by_guid(guid);
 
-                warn("n outgoig: {}\n", .{outgoing_workers.items.len});
+                warn("finding guid\n", .{});
+                warn("n outgoing: {}\n", .{outgoing_workers.items.len});
                 for (outgoing_workers.items) |out_worker| {
                     warn("out_worker {}\n", .{out_worker});
                     if (out_worker.accepting() and out_worker.guid == guid) {
@@ -222,6 +223,7 @@ const Job = union(enum) {
                 const body = @ptrCast([*]u8, c.nng_msg_body(msg));
                 var body_slice = body[0..len];
 
+                warn("body len: {}\n", .{len});
                 switch (operand) {
                     .GetID => {
                         var reply_msg: ?*c.nng_msg = undefined;
@@ -229,6 +231,8 @@ const Job = union(enum) {
                         if (r != 0) {
                             fatal("nng_msg_alloc", r);
                         }
+
+                        const r3 = c.nng_msg_append_u64(reply_msg, guid);
 
                         const r2 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len);
 
@@ -271,6 +275,7 @@ const Job = union(enum) {
 
                 const guid = self.reply.guid;
                 const msg = self.reply.msg;
+                warn("guid {}, msg: {}\n", .{ guid, msg });
                 for (incoming_workers) |w| {
                     if (w.guid == guid and w.state == .Wait) {
                         warn("replying\n", .{});
@@ -330,6 +335,7 @@ fn rand_id() ID {
 fn init() !void {
     warn("Init\n", .{});
     my_id = rand_id();
+    warn("My ID: {}", .{my_id});
     std.mem.set(u8, closest_distance[0..], 0);
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
@@ -449,6 +455,7 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
                 var int_operand: u32 = 0;
                 const r2 = c.nng_msg_trim_u32(msg, &int_operand);
                 if (r2 != 0) {
+                    fatal("Fail", r2);
                     c.nng_msg_free(msg);
                     return;
                 }
@@ -457,7 +464,9 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             var guid: Guid = 0;
             const r2 = c.nng_msg_trim_u64(msg, &guid);
-
+            if (r2 != 0) {
+                fatal("Fail", r2);
+            }
             // set worker up for reply
             work.guid = guid;
             work.state = InWork.State.Wait;
@@ -559,9 +568,13 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
                 fatal("nng_ctx_recv", r1);
             }
 
-            const msg = c.nng_aio_get_msg(work.aio);
+            var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
             const r2 = c.nng_msg_trim_u64(msg, &guid);
+            if (r2 != 0) {
+                fatal("nng_ctx_recv", r2);
+            }
+            warn("read guid: {}\n", .{guid});
             event_queue.push(Job{ .handle_response = .{ .guid = guid, .msg = msg.? } }) catch unreachable;
         },
 
