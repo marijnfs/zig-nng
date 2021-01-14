@@ -80,6 +80,7 @@ const Connection = struct {
     fn req_open(
         self: *Connection,
     ) !void {
+        warn("req open {s}\n", .{self.address});
         var r: c_int = undefined;
         r = c.nng_req0_open(&self.socket);
         if (r != 0) {
@@ -89,6 +90,7 @@ const Connection = struct {
     }
 
     fn rep_open(self: *Connection) !void {
+        warn("rep open {s}\n", .{self.address});
         var r: c_int = undefined;
         r = c.nng_rep0_open(self.sock);
         if (r != 0) {
@@ -203,6 +205,7 @@ const Job = union(enum) {
                 try event_queue.push(self.*);
             },
             .store => {
+                warn("store\n", .{});
                 const data_id = self.store.id;
                 if (in_my_range(data_id)) //store here
                 {} else {
@@ -210,6 +213,7 @@ const Job = union(enum) {
                 }
             },
             .handle_request => {
+                warn("handle request\n", .{});
                 const operand = self.handle_request.operand;
                 const guid = self.handle_request.guid;
                 var msg = self.handle_request.msg;
@@ -233,7 +237,7 @@ const Job = union(enum) {
                 }
             },
             .bootstrap => {
-                warn("{}\n", .{known_addresses.items});
+                warn("bootstrap: {}\n", .{known_addresses.items});
                 var n = self.bootstrap.n;
                 if (known_addresses.items.len < n)
                     n = known_addresses.items.len;
@@ -245,6 +249,8 @@ const Job = union(enum) {
                 }
             },
             .connect => {
+                warn("connect\n", .{});
+
                 var address = self.connect.address;
                 var conn = try Connection.alloc();
                 conn.init(address);
@@ -261,6 +267,8 @@ const Job = union(enum) {
                 try event_queue.push(Job{ .ping_id = .{ .guid = conn.guid } });
             },
             .reply => {
+                warn("reply\n", .{});
+
                 const guid = self.reply.guid;
                 const msg = self.reply.msg;
                 for (incoming_workers) |w| {
@@ -412,8 +420,7 @@ fn timer_threadfunc(context: void) !void {
     warn("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(3000);
-        warn("some guid: {}\n", .{get_guid()});
-        warn("ceil: {}\n", .{ceil_log2(1)});
+        warn("some guid: {} ceil: {}\n", .{ get_guid(), ceil_log2(1) });
     }
 }
 
@@ -536,6 +543,8 @@ const OutWork = struct {
 };
 
 fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
+    warn("outwork callback\n", .{});
+
     const work = OutWork.fromOpaque(arg);
     switch (work.state) {
         .Ready => {},
@@ -615,8 +624,12 @@ pub fn main() !void {
         fatal("nng_listen", r2);
     }
 
+    warn("listening on {s}", .{address});
+    for (incoming_workers) |w| {
+        inWorkCallback(w.toOpaque());
+    }
+
     try event_queue.push(Job{ .bootstrap = .{ .n = 4 } });
 
-    warn("end", .{});
     event_thread.wait();
 }
