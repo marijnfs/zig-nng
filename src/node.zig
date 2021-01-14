@@ -227,7 +227,7 @@ const Job = union(enum) {
                 const body = @ptrCast([*]u8, c.nng_msg_body(msg));
                 var body_slice = body[0..len];
 
-                warn("body len: {}\n", .{len});
+                warn("operand {}, guid {}, body len: {}\n", .{ operand, guid, len });
                 switch (operand) {
                     .GetID => {
                         var reply_msg: ?*c.nng_msg = undefined;
@@ -238,7 +238,12 @@ const Job = union(enum) {
 
                         const r3 = c.nng_msg_append_u64(reply_msg, guid);
 
-                        const r2 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len);
+                        const pipe = c.nng_msg_get_pipe(msg);
+                        var sockaddr: c.nng_sockaddr = undefined;
+                        const r5 = c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr);
+                        const r2 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr));
+
+                        const r4 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len);
 
                         try event_queue.push(Job{ .reply = .{ .guid = guid, .msg = reply_msg.? } });
                     },
@@ -287,6 +292,7 @@ const Job = union(enum) {
                     }
                 }
             },
+
             .handle_response => {
                 const guid = self.handle_response.guid;
                 const msg = self.handle_response.msg;
@@ -294,13 +300,16 @@ const Job = union(enum) {
 
                 var response_id: ID = undefined;
                 const len = c.nng_msg_len(msg);
-                if (len != response_id.len)
-                    fatal("nng msg trim", 2);
 
-                const body = @ptrCast([*]u8, c.nng_msg_body(msg));
-                var body_slice = body[0..len];
-                warn("body: {}\n", .{body_slice});
-                std.mem.copy(u8, response_id[0..], body_slice);
+                var body = @ptrCast([*]u8, c.nng_msg_body(msg))[0..len];
+
+                var sockaddr: c.nng_sockaddr = undefined;
+                std.mem.copy(u8, @ptrCast([*]u8, &sockaddr)[0..@sizeOf(c.nng_sockaddr)], body[0..@sizeOf(c.nng_sockaddr)]);
+                warn("my sock was: {} {}\n", .{ sockaddr.s_family, sockaddr.s_in });
+                body = body[@sizeOf(c.nng_sockaddr)..];
+
+                warn("body: {}\n", .{body});
+                std.mem.copy(u8, response_id[0..], body);
                 warn("response id: {}\n", .{response_id});
 
                 var conn = try connection_by_guid(guid);
@@ -449,7 +458,6 @@ fn timer_threadfunc(context: void) !void {
     warn("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(3000);
-        warn("some guid: {} ceil: {}\n", .{ get_guid(), ceil_log2(1) });
     }
 }
 
