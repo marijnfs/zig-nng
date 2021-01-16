@@ -160,6 +160,16 @@ fn connection_by_guid(guid: Guid) !*Connection {
     return error.NotFound;
 }
 
+fn connection_by_nearest_id(id: ID) !*Connection {
+    for (routing_table.items) |conn| {
+        if (conn.state != .Unconnected and less(conn.ID, id)) {
+            return conn;
+        }
+    }
+
+    return error.NotFound;
+}
+
 // Rudimentary console
 fn read_lines(context: void) !void {
     warn("Console started\n", .{});
@@ -189,6 +199,34 @@ fn print_nng_sockaddr(sockaddr: c.nng_sockaddr) ![]u8 {
     const addr_ptr = @ptrCast([*]u8, &addr);
     const buffer = try std.fmt.allocPrint(allocator, "{} {} {} {}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
     return buffer;
+}
+
+fn handle_response(operand: Operand, msg: *c.nng_msg, guid: u64) !void {}
+
+fn handle_request(operand: Operand, msg: *c.nng_msg, guid: u64) !void {
+    var slice = msg_to_slice(msg);
+    switch (operand) {
+        .GetID => {
+            var reply_msg: ?*c.nng_msg = undefined;
+            try nng_ret(c.nng_msg_alloc(&reply_msg, 0));
+            try nng_ret(c.nng_msg_append_u64(reply_msg, guid));
+
+            const pipe = c.nng_msg_get_pipe(msg);
+            var sockaddr: c.nng_sockaddr = undefined;
+            try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
+            const buf = try print_nng_sockaddr(sockaddr);
+            try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr)));
+            try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len));
+
+            try event_queue.push(Job{ .reply = .{ .guid = guid, .msg = reply_msg.? } });
+        },
+    }
+}
+
+fn msg_to_slice(msg: *c.nng_msg) []u8 {
+    const len = c.nng_msg_len(msg);
+    const body = @ptrCast([*]u8, c.nng_msg_body(msg));
+    return body[0..len];
 }
 
 const Job = union(enum) {
@@ -254,27 +292,7 @@ const Job = union(enum) {
                 const guid = self.handle_request.guid;
                 var msg = self.handle_request.msg;
 
-                const len = c.nng_msg_len(msg);
-                const body = @ptrCast([*]u8, c.nng_msg_body(msg));
-                var body_slice = body[0..len];
-
-                warn("operand {}, guid {}, body len: {}\n", .{ operand, guid, len });
-                switch (operand) {
-                    .GetID => {
-                        var reply_msg: ?*c.nng_msg = undefined;
-                        try nng_ret(c.nng_msg_alloc(&reply_msg, 0));
-                        try nng_ret(c.nng_msg_append_u64(reply_msg, guid));
-
-                        const pipe = c.nng_msg_get_pipe(msg);
-                        var sockaddr: c.nng_sockaddr = undefined;
-                        try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
-                        const buf = try print_nng_sockaddr(sockaddr);
-                        try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr)));
-                        try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len));
-
-                        try event_queue.push(Job{ .reply = .{ .guid = guid, .msg = reply_msg.? } });
-                    },
-                }
+                try handle_request(operand, msg, guid);
             },
             .bootstrap => {
                 warn("bootstrap: {}\n", .{known_addresses.items});
@@ -291,6 +309,7 @@ const Job = union(enum) {
             .connect => {
                 warn("connect\n", .{});
 
+                // Setup connection
                 var address = self.connect.address;
                 var conn = try Connection.alloc();
                 conn.init(address);
@@ -299,6 +318,7 @@ const Job = union(enum) {
 
                 try routing_table.append(conn);
 
+                // Create a worker
                 warn("connect on socket: {}\n", .{conn.socket});
                 var out_worker = try OutWork.alloc(conn.socket);
                 out_worker.guid = conn.guid;
@@ -317,6 +337,8 @@ const Job = union(enum) {
                         warn("replying\n", .{});
                         w.send(msg);
                     }
+                } else {
+                    warn("Couldn't reply\n", .{});
                 }
             },
 
