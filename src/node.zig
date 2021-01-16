@@ -32,6 +32,7 @@ var event_queue = AtomicQueue(Job).init(allocator);
 // Threads
 var event_thread: *Thread = undefined;
 var timer_thread: *Thread = undefined;
+var read_lines_thread: *Thread = undefined;
 
 // Database which holds known items
 var database = std.AutoHashMap(ID, Block).init(allocator);
@@ -154,6 +155,10 @@ const HandleResponse = struct {
     msg: *c.nng_msg, //message to process
 };
 
+const HandleStdinLine = struct {
+    buffer: []u8,
+};
+
 fn connection_by_guid(guid: Guid) !*Connection {
     for (routing_table.items) |conn| {
         if (conn.guid == guid) {
@@ -161,6 +166,37 @@ fn connection_by_guid(guid: Guid) !*Connection {
         }
     }
     return error.NotFound;
+}
+
+// Rudimentary console
+fn read_lines(context: void) !void {
+    warn("Console started\n", .{});
+
+    var buf: [4096]u8 = undefined;
+    // const stdout = std.io.getStdOut().inStream();
+    // const readUntil = stdin.readUntilDelimiterOrEof;
+
+    while (true) {
+        const line = (std.io.getStdIn().reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize)) catch |e| switch (e) {
+            error.EndOfStream => {
+                warn("=Console Ending=\n", .{});
+                return;
+            },
+            else => return e,
+        });
+        try event_queue.push(Job{ .handle_stdin_line = .{ .buffer = line } });
+    }
+}
+
+fn print_nng_sockaddr(sockaddr: c.nng_sockaddr) ![]u8 {
+    const fam = sockaddr.s_family;
+
+    const ipv4 = sockaddr.s_in;
+
+    var addr = ipv4.sa_addr;
+    const addr_ptr = @ptrCast([*]u8, &addr);
+    const buffer = try std.fmt.allocPrint(allocator, "{} {} {} {}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
+    return buffer;
 }
 
 const Job = union(enum) {
@@ -171,6 +207,7 @@ const Job = union(enum) {
     connect: Connect,
     handle_response: HandleResponse,
     reply: Reply,
+    handle_stdin_line: HandleStdinLine,
 
     fn work(self: *Job) !void {
         warn("job: {}\n", .{self});
@@ -241,6 +278,7 @@ const Job = union(enum) {
                         const pipe = c.nng_msg_get_pipe(msg);
                         var sockaddr: c.nng_sockaddr = undefined;
                         const r5 = c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr);
+                        const buf = try print_nng_sockaddr(sockaddr);
                         const r2 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr));
 
                         const r4 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len);
@@ -318,6 +356,10 @@ const Job = union(enum) {
 
                 warn("set conn to {}\n", .{conn});
             },
+            .handle_stdin_line => {
+                const buf = self.handle_stdin_line.buffer;
+                warn("handle: {s}\n", .{buf});
+            },
         }
     }
 };
@@ -372,6 +414,7 @@ fn init() !void {
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
     timer_thread = try Thread.spawn({}, timer_threadfunc);
+    read_lines_thread = try Thread.spawn({}, read_lines);
 }
 
 // All operand imply a ID argument
