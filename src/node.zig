@@ -116,9 +116,14 @@ const Connection = struct {
 };
 
 const Store = struct {
-    src_id: u64, //source of request
-    id: ID,
-    data: []u8,
+    guid: u64, //source of request
+    key: ID,
+    value: []u8,
+};
+
+const Get = struct {
+    guid: u64, //source of request
+    key: ID,
 };
 
 const PingID = struct {
@@ -138,6 +143,7 @@ const SendMessage = struct {
     guid: Guid, //internal processing id
     msg: *c.nng_msg,
 };
+store: Store,
 
 const Reply = struct {
     guid: Guid,
@@ -202,6 +208,7 @@ fn print_nng_sockaddr(sockaddr: c.nng_sockaddr) ![]u8 {
 const Job = union(enum) {
     ping_id: PingID,
     store: Store,
+    get: Get,
     handle_request: HandleRequest,
     bootstrap: Bootstrap,
     connect: Connect,
@@ -248,11 +255,15 @@ const Job = union(enum) {
             },
             .store => {
                 warn("store\n", .{});
-                const data_id = self.store.id;
-                if (in_my_range(data_id)) //store here
-                {} else {
-                    const src = self.store.src_id;
-                }
+                const key = self.store.key;
+                const value = self.store.value;
+                if (in_my_range(key)) //store here
+                {
+                    try database.put(key, value);
+                } else {}
+            },
+            .get => {
+                warn("get {}\n", .{self.get});
             },
             .handle_request => {
                 warn("handle request\n", .{});
@@ -359,6 +370,21 @@ const Job = union(enum) {
             .handle_stdin_line => {
                 const buf = self.handle_stdin_line.buffer;
                 warn("handle: {s}\n", .{buf});
+                const space = std.mem.lastIndexOf(u8, buf, " ");
+                if (space) |idx| {
+                    const key = buf[0..idx];
+                    const hash = calculate_hash(key);
+                    const value = buf[idx + 1 ..];
+                    warn("val: {s}:{s}\n", .{ key, value });
+                    try event_queue.push(Job{ .store = .{ .key = hash, .value = value, .guid = 0 } });
+                } else {
+                    const key = buf;
+                    const hash = calculate_hash(key);
+
+                    try event_queue.push(Job{ .get = .{ .key = hash, .guid = 0 } });
+
+                    warn("get: {s}\n", .{buf});
+                }
             },
         }
     }
@@ -394,7 +420,7 @@ fn in_my_range(id: ID) bool {
     return less(id, closest_distance);
 }
 
-fn hash(data: []const u8) ID {
+fn calculate_hash(data: []const u8) ID {
     var result: ID = undefined;
     crypto.hash.Blake3.hash(data, result[0..], .{});
     return result;
