@@ -201,7 +201,26 @@ fn print_nng_sockaddr(sockaddr: c.nng_sockaddr) ![]u8 {
     return buffer;
 }
 
-fn handle_response(operand: Operand, msg: *c.nng_msg, guid: u64) !void {}
+fn handle_response(msg: *c.nng_msg, guid: u64) !void {
+    var body = msg_to_slice(msg);
+
+    // Ping?
+    var sockaddr: c.nng_sockaddr = undefined;
+    std.mem.copy(u8, @ptrCast([*]u8, &sockaddr)[0..@sizeOf(c.nng_sockaddr)], body[0..@sizeOf(c.nng_sockaddr)]);
+    warn("my sock was: {} {}\n", .{ sockaddr.s_family, sockaddr.s_in });
+    body = body[@sizeOf(c.nng_sockaddr)..];
+
+    var response_id: ID = undefined;
+    warn("body: {}\n", .{body});
+    std.mem.copy(u8, response_id[0..], body);
+    warn("response id: {}\n", .{response_id});
+
+    var conn = try connection_by_guid(guid);
+    warn("conn[{}] {}\n", .{ guid, conn });
+    conn.id = response_id;
+
+    warn("set conn to {}\n", .{conn});
+}
 
 fn handle_request(operand: Operand, msg: *c.nng_msg, guid: u64) !void {
     var slice = msg_to_slice(msg);
@@ -346,26 +365,7 @@ const Job = union(enum) {
                 const guid = self.handle_response.guid;
                 const msg = self.handle_response.msg;
                 warn("got: {}\n", .{self.handle_response});
-
-                var response_id: ID = undefined;
-                const len = c.nng_msg_len(msg);
-
-                var body = @ptrCast([*]u8, c.nng_msg_body(msg))[0..len];
-
-                var sockaddr: c.nng_sockaddr = undefined;
-                std.mem.copy(u8, @ptrCast([*]u8, &sockaddr)[0..@sizeOf(c.nng_sockaddr)], body[0..@sizeOf(c.nng_sockaddr)]);
-                warn("my sock was: {} {}\n", .{ sockaddr.s_family, sockaddr.s_in });
-                body = body[@sizeOf(c.nng_sockaddr)..];
-
-                warn("body: {}\n", .{body});
-                std.mem.copy(u8, response_id[0..], body);
-                warn("response id: {}\n", .{response_id});
-
-                var conn = try connection_by_guid(guid);
-                warn("conn[{}] {}\n", .{ guid, conn });
-                conn.id = response_id;
-
-                warn("set conn to {}\n", .{conn});
+                try handle_response(msg, guid);
             },
             .handle_stdin_line => {
                 const buf = self.handle_stdin_line.buffer;
