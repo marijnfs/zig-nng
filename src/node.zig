@@ -87,31 +87,18 @@ const Connection = struct {
     ) !void {
         warn("req open {s}\n", .{self.address});
         var r: c_int = undefined;
-        r = c.nng_req0_open(&self.socket);
-        if (r != 0) {
-            fatal("nng_req0_open", r);
-            return error.Fail;
-        }
+        try nng_ret(c.nng_req0_open(&self.socket));
     }
 
     fn rep_open(self: *Connection) !void {
         warn("rep open {s}\n", .{self.address});
         var r: c_int = undefined;
-        r = c.nng_rep0_open(self.sock);
-        if (r != 0) {
-            fatal("nng_req0_open", r);
-            return error.Fail;
-        }
+        try nng_ret(c.nng_rep0_open(self.sock));
     }
 
     fn dial(self: *Connection) !void {
         warn("dialing {s}\n", .{self.address});
-        var r: c_int = undefined;
-        r = c.nng_dial(self.socket, self.address, 0, 0);
-        if (r != 0) {
-            fatal("nng_dial", r);
-            return error.Fail;
-        }
+        try nng_ret(c.nng_dial(self.socket, self.address, 0, 0));
     }
 };
 
@@ -143,7 +130,6 @@ const SendMessage = struct {
     guid: Guid, //internal processing id
     msg: *c.nng_msg,
 };
-store: Store,
 
 const Reply = struct {
     guid: Guid,
@@ -233,13 +219,10 @@ const Job = union(enum) {
                         warn("send to guid: {}\n", .{guid});
 
                         var msg: ?*c.nng_msg = undefined;
-                        const r = c.nng_msg_alloc(&msg, 0);
-                        if (r != 0) {
-                            fatal("nng_msg_alloc", r);
-                        }
+                        try nng_ret(c.nng_msg_alloc(&msg, 0));
 
-                        const r2 = c.nng_msg_append_u32(msg, @enumToInt(Operand.GetID));
-                        const r3 = c.nng_msg_append_u64(msg, guid);
+                        try nng_ret(c.nng_msg_append_u32(msg, @enumToInt(Operand.GetID)));
+                        try nng_ret(c.nng_msg_append_u64(msg, guid));
 
                         out_worker.send(msg.?);
 
@@ -279,20 +262,15 @@ const Job = union(enum) {
                 switch (operand) {
                     .GetID => {
                         var reply_msg: ?*c.nng_msg = undefined;
-                        const r = c.nng_msg_alloc(&reply_msg, 0);
-                        if (r != 0) {
-                            fatal("nng_msg_alloc", r);
-                        }
-
-                        const r3 = c.nng_msg_append_u64(reply_msg, guid);
+                        try nng_ret(c.nng_msg_alloc(&reply_msg, 0));
+                        try nng_ret(c.nng_msg_append_u64(reply_msg, guid));
 
                         const pipe = c.nng_msg_get_pipe(msg);
                         var sockaddr: c.nng_sockaddr = undefined;
-                        const r5 = c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr);
+                        try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
                         const buf = try print_nng_sockaddr(sockaddr);
-                        const r2 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr));
-
-                        const r4 = c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len);
+                        try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr)));
+                        try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len));
 
                         try event_queue.push(Job{ .reply = .{ .guid = guid, .msg = reply_msg.? } });
                     },
@@ -322,7 +300,7 @@ const Job = union(enum) {
                 try routing_table.append(conn);
 
                 warn("connect on socket: {}\n", .{conn.socket});
-                var out_worker = OutWork.alloc(conn.socket);
+                var out_worker = try OutWork.alloc(conn.socket);
                 out_worker.guid = conn.guid;
                 try outgoing_workers.append(out_worker);
 
@@ -432,10 +410,27 @@ fn rand_id() ID {
     return id;
 }
 
+fn nng_ret(code: c_int) !void {
+    if (code != 0) {
+        std.debug.warn("nng_err: {}\n", .{@ptrCast([*]const u8, c.nng_strerror(code))});
+        return error.NNG;
+    }
+}
+
+fn nng_append_array(msg: *c.nng_msg, buf: []const u8) !void {
+    try nng_ret(c.nng_msg_append_u64(@intCast(u64, buf.len)));
+}
+
+fn nng_append(msg: *c.nng_msg, buf: anytype) !void {
+    try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &buf), @sizeOf(buf)));
+
+    try nng_ret(c.nng_msg_append(@intCast(u64, buf.len)));
+}
+
 fn init() !void {
     warn("Init\n", .{});
     my_id = rand_id();
-    warn("My ID: {}", .{my_id});
+    warn("My ID: {s}", .{my_id});
     std.mem.set(u8, closest_distance[0..], 0);
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
@@ -485,22 +480,13 @@ const InWork = struct {
         w.state = .Send;
     }
 
-    pub fn alloc(sock: c.nng_socket) *InWork {
+    pub fn alloc(sock: c.nng_socket) !*InWork {
         var o = c.nng_alloc(@sizeOf(InWork));
-        if (o == null) {
-            fatal("nng_alloc", 2); // c.NNG_ENOMEM
-        }
         var w = InWork.fromOpaque(o);
 
-        const r1 = c.nng_aio_alloc(&w.aio, inWorkCallback, w);
-        if (r1 != 0) {
-            fatal("nng_aio_alloc", r1);
-        }
+        try nng_ret(c.nng_aio_alloc(&w.aio, inWorkCallback, w));
 
-        const r2 = c.nng_ctx_open(&w.ctx, sock);
-        if (r2 != 0) {
-            fatal("nng_ctx_open", r2);
-        }
+        try nng_ret(c.nng_ctx_open(&w.ctx, sock));
 
         w.state = State.Init;
         return w;
@@ -544,29 +530,25 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
 
         .Recv => {
-            const r1 = c.nng_aio_result(work.aio);
-            if (r1 != 0) {
-                fatal("nng_ctx_recv", r1);
-            }
+            nng_ret(c.nng_aio_result(work.aio)) catch {
+                work.state = .Init;
+                return;
+            };
 
             const msg = c.nng_aio_get_msg(work.aio);
 
             var operand = blk: {
                 var int_operand: u32 = 0;
-                const r2 = c.nng_msg_trim_u32(msg, &int_operand);
-                if (r2 != 0) {
-                    fatal("Fail", r2);
-                    c.nng_msg_free(msg);
+                nng_ret(c.nng_msg_trim_u32(msg, &int_operand)) catch {
+                    warn("Failed to read operand\n", .{});
                     return;
-                }
+                };
                 break :blk @intToEnum(Operand, @intCast(@TagType(Operand), int_operand));
             };
 
             var guid: Guid = 0;
-            const r2 = c.nng_msg_trim_u64(msg, &guid);
-            if (r2 != 0) {
-                fatal("Fail", r2);
-            }
+            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch return;
+
             // set worker up for reply
             work.guid = guid;
             work.state = InWork.State.Wait;
@@ -625,23 +607,17 @@ const OutWork = struct {
         c.nng_ctx_send(w.ctx, w.aio);
     }
 
-    pub fn alloc(sock: c.nng_socket) *OutWork {
+    pub fn alloc(sock: c.nng_socket) !*OutWork {
         var o = c.nng_alloc(@sizeOf(OutWork));
         if (o == null) {
-            fatal("nng_alloc", 2); // c.NNG_ENOMEM
+            try nng_ret(2); // c.NNG_ENOMEM
         }
 
         var w = OutWork.fromOpaque(o);
 
-        const r1 = c.nng_aio_alloc(&w.aio, outWorkCallback, w);
-        if (r1 != 0) {
-            fatal("nng_aio_alloc", r1);
-        }
+        try nng_ret(c.nng_aio_alloc(&w.aio, outWorkCallback, w));
 
-        const r2 = c.nng_ctx_open(&w.ctx, sock);
-        if (r2 != 0) {
-            fatal("nng_ctx_open", r2);
-        }
+        try nng_ret(c.nng_ctx_open(&w.ctx, sock));
 
         //set initial id to 0, will be filled in by request
         std.mem.set(u8, w.id[0..], 0);
@@ -663,17 +639,13 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
 
         .Wait => {
-            const r1 = c.nng_aio_result(work.aio);
-            if (r1 != 0) {
-                fatal("nng_ctx_recv", r1);
-            }
+            nng_ret(c.nng_aio_result(work.aio)) catch return;
 
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
-            const r2 = c.nng_msg_trim_u64(msg, &guid);
-            if (r2 != 0) {
-                fatal("nng_ctx_recv", r2);
-            }
+            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
+                warn("couldn't trim guid\n", .{});
+            };
             warn("read guid: {}\n", .{guid});
             event_queue.push(Job{ .handle_response = .{ .guid = guid, .msg = msg.? } }) catch unreachable;
         },
@@ -693,14 +665,6 @@ fn sockToString(addr: c.nng_sockaddr) [:0]u8 {
         var in_addr = addr.s_in.sa_addr;
         return fmt.allocPrint(allocator, "tcp://{}", .{in_addr});
     }
-}
-
-fn fatal(msg: []const u8, code: c_int) void {
-    // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
-    // in this case?
-    std.debug.warn("{}: {}\n", .{ msg, @ptrCast([*]const u8, c.nng_strerror(code)) });
-    unreachable;
-    // std.os.exit(1);
 }
 
 pub fn main() !void {
@@ -723,19 +687,13 @@ pub fn main() !void {
         try known_addresses.append(out_addr_null);
     }
 
-    const r1 = c.nng_rep0_open(&main_socket);
-    if (r1 != 0) {
-        fatal("nng_rep0_open", r1);
-    }
+    try nng_ret(c.nng_rep0_open(&main_socket));
 
     for (incoming_workers) |*w| {
-        w.* = InWork.alloc(main_socket);
+        w.* = try InWork.alloc(main_socket);
     }
 
-    const r2 = c.nng_listen(main_socket, address, 0, 0);
-    if (r2 != 0) {
-        fatal("nng_listen", r2);
-    }
+    try nng_ret(c.nng_listen(main_socket, address, 0, 0));
 
     warn("listening on {s}", .{address});
     for (incoming_workers) |w| {
