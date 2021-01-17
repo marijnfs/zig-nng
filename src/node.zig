@@ -208,6 +208,8 @@ fn handle_response(msg: *c.nng_msg, guid: u64) !void {
     var sockaddr: c.nng_sockaddr = undefined;
     std.mem.copy(u8, @ptrCast([*]u8, &sockaddr)[0..@sizeOf(c.nng_sockaddr)], body[0..@sizeOf(c.nng_sockaddr)]);
     warn("my sock was: {} {}\n", .{ sockaddr.s_family, sockaddr.s_in });
+    var ptr = @ptrCast(*[4]u8, &sockaddr.s_in.sa_addr);
+    warn("add: {} <", .{ptr.*});
     body = body[@sizeOf(c.nng_sockaddr)..];
 
     var response_id: ID = undefined;
