@@ -355,9 +355,10 @@ const Job = union(enum) {
                     if (w.guid == guid and w.state == .Wait) {
                         warn("replying\n", .{});
                         w.send(msg);
+                        break;
                     }
                 } else {
-                    warn("Couldn't reply\n", .{});
+                    warn("Couldn't reply, guid: {}, workers: {}\n", .{ guid, incoming_workers });
                 }
             },
 
