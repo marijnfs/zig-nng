@@ -1,5 +1,7 @@
 Next
 ====
+- Probably Unify InWorker / OutWorker
+  - both just send and receive, with waiting moments
 
 [API and other messages]
 - GetID, //get ID of connecting node

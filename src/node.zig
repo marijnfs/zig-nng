@@ -3,6 +3,7 @@ const ArrayList = std.ArrayList;
 const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
 const AtomicQueue = @import("queue.zig").AtomicQueue;
+const meta = std.meta;
 
 const crypto = std.crypto;
 
@@ -124,7 +125,7 @@ const Connect = struct {
 const RequestData = struct {
     id: ID = undefined, //recipient
     guid: Guid = 0, //internal processing id
-    request: Request,
+    request: Request, msg: *c.nng_msg = undefined
 };
 
 const ResponseData = struct {
@@ -226,13 +227,17 @@ fn handle_response(guid: u64, response: Response) !void {
     // warn("set conn to {}\n", .{conn});
 }
 
-fn handle_request(guid: Guid, request: Request) !void {
-    const tag = @as(@TagType(Request), request);
-    switch (tag) {
-        .ping_id => {
-            try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{} } } });
-        },
-    }
+fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
+    // const tag = @as(@TagType(Request), request);
+    // switch (tag) {
+    //     .ping_id => {
+    //             const pipe = c.nng_msg_get_pipe(msg);
+    // var sockaddr: c.nng_sockaddr = undefined;
+    // try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
+
+    //         try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{. sockaddr = sockaddr} } } });
+    //     },
+    // }
 }
 
 fn msg_to_slice(msg: *c.nng_msg) []u8 {
@@ -250,7 +255,7 @@ const PingId = struct {
 };
 
 const Response = union(enum) {
-    ping_id: struct {}
+    ping_id: struct { sockaddr: c.nng_sockaddr },
 };
 
 fn enqueue(job: Job) !void {
@@ -258,30 +263,85 @@ fn enqueue(job: Job) !void {
 }
 
 fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
-    comptime const TagType = @TagType(T);
-    var operand = blk: {
-        var int_operand: u32 = 0;
-        nng_ret(c.nng_msg_trim_u32(msg, &int_operand)) catch {
-            warn("Failed to read operand\n", .{});
-            return error.DeserialisationFail;
-        };
-        break :blk @intToEnum(TagType, @intCast(@TagType(TagType), int_operand));
-    };
-
     var t: T = undefined;
+    const info = @typeInfo(T);
+    switch (info) {
+        .Struct => {
+            inline for (info.Struct.fields) |*field_info| {
+                const name = field_info.name;
+                const FieldType = field_info.field_type;
+                if (comptime meta.trait.isIndexable(FieldType)) {
+                    continue;
+                }
+
+                @field(&t, name) = try deserialise_msg(FieldType, msg);
+            }
+        },
+        .Union => {
+            if (info.Union.tag_type) |TagType| {
+                const active_tag = try deserialise_msg(TagType, msg);
+
+                inline for (info.Union.fields) |field_info| {
+                    if (@field(TagType, field_info.name) == active_tag) {
+                        const name = field_info.name;
+                        const FieldType = field_info.field_type;
+                        @field(t, name) = try deserialise_msg(FieldType, msg);
+                    }
+                }
+            }
+        },
+        .Enum => {
+            t = blk: {
+                var int_operand: u32 = 0;
+                nng_ret(c.nng_msg_trim_u32(msg, &int_operand)) catch {
+                    warn("Failed to read operand\n", .{});
+                    return error.DeserialisationFail;
+                };
+                break :blk @intToEnum(T, @intCast(@TagType(T), int_operand));
+            };
+        },
+        else => @compileError("Cannot deserialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
+    }
     return t;
 }
 
-fn serialise_msg(msg: *c.nng_msg, t: anytype) *c.nng_msg {
-    try nng_ret(c.nng_msg_append_u64(reply_msg, guid));
+fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
+    const T = comptime @TypeOf(t);
 
-    const pipe = c.nng_msg_get_pipe(msg);
-    var sockaddr: c.nng_sockaddr = undefined;
-    try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
-    const buf = try print_nng_sockaddr(sockaddr);
-    warn("{s}\n", .{buf});
-    try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, &sockaddr), @sizeOf(c.nng_sockaddr)));
-    try nng_ret(c.nng_msg_append(reply_msg, @ptrCast(*c_void, my_id[0..]), my_id.len));
+    const info = @typeInfo(T);
+    switch (info) {
+        .Struct => {
+            inline for (info.Struct.fields) |*field_info| {
+                const name = field_info.name;
+                const FieldType = field_info.field_type;
+                if (comptime trait.isIndexable(FieldType)) {
+                    continue;
+                }
+
+                switch (FieldType) {
+                    .Int => {},
+                }
+            }
+        },
+        .Union => {
+            if (info.Union.tag_type) |TagType| {
+                const active_tag = meta.activeTag(t);
+                try serialise_msg(@as(@TagType(T), active_tag), msg);
+
+                inline for (info.Union.fields) |field_info| {
+                    if (@field(TagType, field_info.name) == active_tag) {
+                        const name = field_info.name;
+                        const FieldType = field_info.field_type;
+                        try serialise_msg(@field(t, name), msg);
+                    }
+                }
+            }
+        },
+        .Enum => {
+            try nng_ret(c.nng_msg_append_u32(msg, @intCast(u32, @enumToInt(t))));
+        },
+        else => @compileError("Cannot serialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
+    }
 }
 
 const Job = union(enum) {
@@ -307,13 +367,14 @@ const Job = union(enum) {
                 var conn = connection_by_guid(guid);
 
                 const request = self.send_request.request;
-                const tag = @as(@TagType(Request), request);
 
-                var msg: ?*c.nng_msg = undefined;
-                try nng_ret(c.nng_msg_alloc(&msg, 0));
+                var request_msg: ?*c.nng_msg = undefined;
+                try nng_ret(c.nng_msg_alloc(&request_msg, 0));
 
-                try nng_ret(c.nng_msg_append_u32(msg, @intCast(u32, @enumToInt(tag))));
-                // try nng_ret(c.nng_msg_append_u64(msg, guid));
+                // First set the guid
+                try nng_ret(c.nng_msg_append_u64(request_msg, guid));
+
+                serialise_msg(request, request_msg.?) catch unreachable;
 
                 warn("finding guid\n", .{});
                 warn("n outgoing: {}\n", .{outgoing_workers.items.len});
@@ -323,10 +384,8 @@ const Job = union(enum) {
 
                         warn("send to guid: {}\n", .{guid});
 
-                        out_worker.send(msg.?);
+                        out_worker.send(request_msg.?);
 
-                        // ptrCast(*c_void, d);
-                        // const r2 = c.nng_msg_append();
                         return;
                     }
                 }
@@ -351,8 +410,9 @@ const Job = union(enum) {
                 warn("handle request\n", .{});
                 const guid = self.handle_request.guid;
                 const request = self.handle_request.request;
+                const msg = self.handle_request.msg;
 
-                try handle_request(guid, request);
+                try handle_request(guid, request, msg);
             },
             .bootstrap => {
                 warn("bootstrap: {}\n", .{known_addresses.items});
@@ -600,9 +660,11 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             work.guid = guid;
             work.state = InWork.State.Wait;
 
-            const request: Request = undefined;
+            // We deserialise the message in a request
+            const request = deserialise_msg(Request, msg.?) catch unreachable;
 
-            event_queue.push(Job{ .handle_request = .{ .guid = guid, .request = request } }) catch |e| {
+            // We still add the msg, in case we need to query extra information
+            event_queue.push(Job{ .handle_request = .{ .guid = guid, .request = request, .msg = msg.? } }) catch |e| {
                 warn("error: {}\n", .{e});
             };
 
