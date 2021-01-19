@@ -1,6 +1,5 @@
 const std = @import("std");
 const c = @import("c.zig").c;
-const warn = std.debug.warn;
 
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
@@ -9,8 +8,8 @@ fn fatal(msg: []const u8, code: c_int) void {
     std.os.exit(1);
 }
 
-const Work = struct {
-    const State = enum {
+const Work = extern struct {
+    const State = extern enum {
         Init,
         Recv,
         Wait,
@@ -46,6 +45,7 @@ const Work = struct {
         if (r2 != 0) {
             fatal("nng_ctx_open", r2);
         }
+
         w.state = State.Init;
         return w;
     }
@@ -54,51 +54,13 @@ const Work = struct {
 fn serverCallback(arg: ?*c_void) callconv(.C) void {
     const work = Work.fromOpaque(arg);
     switch (work.state) {
-        Work.State.Init => {
-            work.state = Work.State.Recv;
-            c.nng_ctx_recv(work.ctx, work.aio);
-        },
+        Work.State.Init => {},
 
-        Work.State.Recv => {
-            const r1 = c.nng_aio_result(work.aio);
-            if (r1 != 0) {
-                fatal("nng_ctx_recv", r1);
-            }
+        Work.State.Recv => {},
 
-            const msg = c.nng_aio_get_msg(work.aio);
+        Work.State.Wait => {},
 
-            var when: u32 = undefined;
-            var what: u32 = undefined;
-
-            const r2 = c.nng_msg_trim_u32(msg, &when);
-            if (r2 != 0) {
-                c.nng_msg_free(msg);
-                c.nng_ctx_recv(work.ctx, work.aio);
-                return;
-            }
-
-            work.msg = msg;
-            work.state = Work.State.Wait;
-            std.debug.warn("what: {}\n", .{what});
-            c.nng_sleep_aio(@bitCast(i32, when), work.aio);
-        },
-
-        Work.State.Wait => {
-            c.nng_aio_set_msg(work.aio, work.msg);
-            work.msg = null;
-            work.state = Work.State.Send;
-            c.nng_ctx_send(work.ctx, work.aio);
-        },
-
-        Work.State.Send => {
-            const r = c.nng_aio_result(work.aio);
-            if (r != 0) {
-                c.nng_msg_free(work.msg);
-                fatal("nng_ctx_send", r);
-            }
-            work.state = Work.State.Recv;
-            c.nng_ctx_recv(work.ctx, work.aio);
-        },
+        Work.State.Send => {},
     }
 }
 
@@ -134,8 +96,6 @@ pub fn serve(comptime worker_count: comptime_int, address: [*]const u8) void {
 const parallel_count = 128;
 
 pub fn main() !void {
-    warn("rand: {}\n", .{c.nng_random()});
-    warn("rand: {}\n", .{c.nng_random()});
     var allocator = std.heap.c_allocator;
     var args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);

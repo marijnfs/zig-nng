@@ -1,5 +1,16 @@
 Next
 ====
+
+[API and other messages]
+- GetID, //get ID of connecting node
+- GetMessage, //get general message. Arg is peer ID
+- GetPrevPeer,
+- GetNextPeer,
+- GetPrevItem, //number can be supplied to get more than one
+- GetNextItem, //number can be supplied to get more than one
+- GetItem, //retrieve an item
+- Store, // Store command -> check hash to be sure.
+
 - handle_response needs work, deal with many responses.
 - handle_request same
 - deal with freakin return values of nng.
