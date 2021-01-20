@@ -30,8 +30,10 @@ var root_guid: Guid = undefined;
 // Guid that will be used to signify self-id
 var self_guid: Guid = undefined;
 
-var my_id: ID = undefined;
-var closest_distance: ID = undefined;
+var my_id: ID = std.mem.zeroes(ID);
+var nearest_ID: ID = std.mem.zeroes(ID);
+var closest_distance: ID = std.mem.zeroes(ID);
+
 var event_queue = AtomicQueue(Job).init(allocator);
 
 // Threads
@@ -154,6 +156,9 @@ fn connection_by_guid(guid: Guid) !*Connection {
 }
 
 fn connection_by_nearest_id(id: ID) !*Connection {
+    var nearest: ID = std.mem.zeroes(ID);
+    var nearest_conn: *Connection = undefined;
+
     for (connections.items) |conn| {
         if (conn.state != .Unconnected and less(conn.ID, id)) {
             return conn;
@@ -212,6 +217,17 @@ fn print_nng_sockaddr(sockaddr: c.nng_sockaddr, with_port: bool) ![]u8 {
 
 fn handle_response(guid: u64, response: Response) !void {
     // var body = msg_to_slice(msg);
+    var for_me: bool = guid == self_guid;
+
+    if (for_me) {
+        warn("message for me! {} {}", .{ guid, response });
+    }
+
+    switch (response) {
+        .ping_id => {
+            warn("got resp ping id\n", .{});
+        },
+    }
 
     // // Ping
     // var sockaddr: c.nng_sockaddr = undefined;
@@ -234,6 +250,15 @@ fn handle_response(guid: u64, response: Response) !void {
 }
 
 fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
+    switch (request) {
+        .ping_id => {
+            warn("requesting pingid\n", .{});
+            const pipe = c.nng_msg_get_pipe(msg);
+            var sockaddr: c.nng_sockaddr = undefined;
+            try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
+            try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .sockaddr = sockaddr } } } });
+        },
+    }
     // const tag = @as(@TagType(Request), request);
     // switch (tag) {
     //     .ping_id => {
@@ -283,17 +308,43 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                 @field(&t, name) = try deserialise_msg(FieldType, msg);
             }
         },
+        .Array => {
+            const len = info.Array.size;
+            const byteSize = @sizeOf(meta.Child(T)) * len;
+            if (c.nng_msg_len(msg) < byteSize) {
+                return error.MsgSmallerThanArray;
+            }
+
+            const bodyPtr = @ptrCast(*T, c.nng_msg_body(msg));
+            std.mem.copy(u8, &t, bodyPtr);
+            try nng_ret(c.nng_msg_trim(
+                msg,
+                @ptrCast(*c_void, &t),
+            ));
+        },
+        .Pointer => {
+            if (comptime std.meta.trait.isSlice(info)) {
+                try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
+                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * t.len));
+            } else {
+                @compileError("Expected to serialise slice");
+            }
+        },
         .Union => {
-            if (info.Union.tag_type) |TagType| {
+            if (comptime info.Union.tag_type) |TagType| {
+                // const TagType = @TagType(T);
                 const active_tag = try deserialise_msg(TagType, msg);
 
                 inline for (info.Union.fields) |field_info| {
                     if (@field(TagType, field_info.name) == active_tag) {
                         const name = field_info.name;
                         const FieldType = field_info.field_type;
+
                         @field(t, name) = try deserialise_msg(FieldType, msg);
                     }
                 }
+            } else { // c struct or general struct
+                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(T)));
             }
         },
         .Enum => {
@@ -320,13 +371,19 @@ fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
             inline for (info.Struct.fields) |*field_info| {
                 const name = field_info.name;
                 const FieldType = field_info.field_type;
-                if (comptime trait.isIndexable(FieldType)) {
-                    continue;
-                }
-
-                switch (FieldType) {
-                    .Int => {},
-                }
+                try serialise_msg(@field(t, name), msg);
+            }
+        },
+        .Array => {
+            const len = info.Array.size;
+            try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
+        },
+        .Pointer => {
+            if (comptime std.meta.trait.isSlice(info)) {
+                try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
+                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * t.len));
+            } else {
+                @compileError("Expected to serialise slice");
             }
         },
         .Union => {
@@ -380,7 +437,7 @@ const Job = union(enum) {
                 // First set the guid
                 try nng_ret(c.nng_msg_append_u64(request_msg, guid));
 
-                serialise_msg(request, request_msg.?) catch unreachable;
+                try serialise_msg(request, request_msg.?);
 
                 warn("finding guid\n", .{});
                 warn("n outgoing: {}\n", .{outgoing_workers.items.len});
@@ -398,7 +455,32 @@ const Job = union(enum) {
 
                 // If we get here nothing was sent, reschedule
                 warn("reschedule\n", .{});
-                try event_queue.push(self.*);
+                try enqueue(self.*);
+            },
+            .send_response => {
+                warn("response\n", .{});
+
+                const guid = self.send_response.guid;
+                const response = self.send_response.response;
+
+                var response_msg: ?*c.nng_msg = undefined;
+                try nng_ret(c.nng_msg_alloc(&response_msg, 0));
+
+                // First set the guid
+                try nng_ret(c.nng_msg_append_u64(response_msg, guid));
+
+                try serialise_msg(response, response_msg.?);
+
+                warn("guid {}, msg: {}\n", .{ guid, response_msg });
+                for (incoming_workers) |w| {
+                    if (w.guid == guid and w.state == .Wait) {
+                        warn("responseing\n", .{});
+                        w.send(response_msg.?);
+                        break;
+                    }
+                } else {
+                    warn("Couldn't response, guid: {}, workers: {}\n", .{ guid, incoming_workers });
+                }
             },
             .store => {
                 warn("store\n", .{});
@@ -429,7 +511,7 @@ const Job = union(enum) {
                 var i: usize = 0;
                 while (i < n) : (i += 1) {
                     var address = known_addresses.items[i];
-                    try event_queue.push(Job{ .connect = .{ .address = address } });
+                    try enqueue(Job{ .connect = .{ .address = address } });
                 }
             },
             .connect => {
@@ -450,27 +532,7 @@ const Job = union(enum) {
                 out_worker.guid = conn.guid;
                 try outgoing_workers.append(out_worker);
 
-                try event_queue.push(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .ping_id = .{} } } });
-            },
-            .send_response => {
-                warn("reply\n", .{});
-
-                const guid = self.send_response.guid;
-                const response = self.send_response.response;
-
-                var reply_msg: ?*c.nng_msg = undefined;
-                try nng_ret(c.nng_msg_alloc(&reply_msg, 0));
-
-                warn("guid {}, msg: {}\n", .{ guid, reply_msg });
-                for (incoming_workers) |w| {
-                    if (w.guid == guid and w.state == .Wait) {
-                        warn("replying\n", .{});
-                        w.send(reply_msg.?);
-                        break;
-                    }
-                } else {
-                    warn("Couldn't reply, guid: {}, workers: {}\n", .{ guid, incoming_workers });
-                }
+                try enqueue(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .ping_id = .{} } } });
             },
 
             .handle_response => {
@@ -488,12 +550,12 @@ const Job = union(enum) {
                     const hash = calculate_hash(key);
                     const value = buf[idx + 1 ..];
                     warn("val: {s}:{s}\n", .{ key, value });
-                    try event_queue.push(Job{ .store = .{ .key = hash, .value = value, .guid = 0 } });
+                    try enqueue(Job{ .store = .{ .key = hash, .value = value, .guid = 0 } });
                 } else {
                     const key = buf;
                     const hash = calculate_hash(key);
 
-                    try event_queue.push(Job{ .get = .{ .key = hash, .guid = 0 } });
+                    try enqueue(Job{ .get = .{ .key = hash, .guid = 0 } });
 
                     warn("get: {s}\n", .{buf});
                 }
@@ -568,7 +630,7 @@ fn init() !void {
     warn("Init\n", .{});
     my_id = rand_id();
     warn("My ID: {s}", .{my_id});
-    std.mem.set(u8, closest_distance[0..], 0);
+    std.mem.set(u8, nearest_ID[0..], 0);
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
     timer_thread = try Thread.spawn({}, timer_threadfunc);
@@ -660,9 +722,9 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             const msg = c.nng_aio_get_msg(work.aio);
 
             var guid: Guid = 0;
-            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch return;
+            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch unreachable;
 
-            // set worker up for reply
+            // set worker up for response
             work.guid = guid;
             work.state = InWork.State.Wait;
 
@@ -670,7 +732,7 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             const request = deserialise_msg(Request, msg.?) catch unreachable;
 
             // We still add the msg, in case we need to query extra information
-            event_queue.push(Job{ .handle_request = .{ .guid = guid, .request = request, .msg = msg.? } }) catch |e| {
+            enqueue(Job{ .handle_request = .{ .guid = guid, .request = request, .msg = msg.? } }) catch |e| {
                 warn("error: {}\n", .{e});
             };
 
@@ -696,7 +758,7 @@ const OutWork = struct {
         Unconnected, // Unconnected
         Ready, // Ready to accept
         Send,
-        Wait, // Waiting for reply
+        Wait, // Waiting for response
     };
 
     state: State = .Unconnected,
@@ -761,6 +823,8 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
 
+            warn("response msg size: {}\n", .{c.nng_msg_len(msg)});
+
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
                 warn("couldn't trim guid\n", .{});
             };
@@ -768,7 +832,8 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             const response = deserialise_msg(Response, msg.?) catch unreachable;
 
-            event_queue.push(Job{ .handle_response = .{ .guid = guid, .response = response } }) catch unreachable;
+            enqueue(Job{ .handle_response = .{ .guid = guid, .response = response } }) catch unreachable;
+            work.state = .Ready;
         },
 
         .Unconnected => {

@@ -1,9 +1,16 @@
 [Design Document]
 Describes the general design elements
 - central job queue to make things simple
-- guids are the central identifier to pass manage how to deal with work
+- guids are the central identifier to manage how to deal with work
 - Reply and Request struct with guid and data.
-	- union(enum) to serialize
+	- union(enum) to serialize.
+
+[Xor]
+- Central distance unit.
+- Store nearest to ID's created from own ID
+- Store everything nearer than nearest connected ID in routing talbe.
+- Nearest ID (and n id's above that), gives idea of network size.
+	- Three of nearest ID, next ID above, ..etc.
 
 [Data]
 - Current block size: 64kb
@@ -57,8 +64,7 @@ Together with general Get on Conn ID, you can have safe general updating and pub
     - the .. part might omit, but we need the last one (next)
   [ID0]         [ID1]       [ID2]       [ID3]
 
-  - If IDx == ID, return self of course (if known)
-  - If IDx <= ID0 and > ID, return ID0
+  - If IDx nearer than ID0, return self
   - Otherwise pass on to nearest ID
   - This should allow network discovery
 
@@ -128,5 +134,10 @@ Process from connector
 	- console
 
 [Request-Response]:
-	- getNextConn
-
+	- find_nearest_next_conn ID (not including ID itself) -> ID, sockaddr
+	- find_before_n ID -> N ID's before ID
+	- get_data ID -> value
+	- store_data ID Value -> ok
+	- get_msg ID -> value
+	- send_msg ID value ? Not sure
+	- publish_data ID pub nonce value | sig -> segregate witness
