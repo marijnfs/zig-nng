@@ -47,8 +47,14 @@ var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
 // Known addresses to bootstrap
 var known_addresses = std.ArrayList([:0]u8).init(allocator);
 
+// Addresses to self
+var self_addresses = std.StringHashMap(bool).init(allocator);
+
 // Our routing table
-var routing_table = std.ArrayList(*Connection).init(allocator);
+var routing_table = std.AutoHashMap(ID, []u8).init(allocator);
+
+// Our connections
+var connections = std.ArrayList(*Connection).init(allocator);
 
 var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
 var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
@@ -138,7 +144,7 @@ const HandleStdinLine = struct {
 };
 
 fn connection_by_guid(guid: Guid) !*Connection {
-    for (routing_table.items) |conn| {
+    for (connections.items) |conn| {
         if (conn.guid == guid) {
             return conn;
         }
@@ -147,7 +153,7 @@ fn connection_by_guid(guid: Guid) !*Connection {
 }
 
 fn connection_by_nearest_id(id: ID) !*Connection {
-    for (routing_table.items) |conn| {
+    for (connections.items) |conn| {
         if (conn.state != .Unconnected and less(conn.ID, id)) {
             return conn;
         }
@@ -376,7 +382,7 @@ const Job = union(enum) {
                 try conn.req_open();
                 try conn.dial();
 
-                try routing_table.append(conn);
+                try connections.append(conn);
 
                 // Create a worker
                 warn("connect on socket: {}\n", .{conn.socket});

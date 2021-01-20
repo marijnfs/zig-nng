@@ -5,31 +5,45 @@ Describes the general design elements
 - Reply and Request struct with guid and data.
 	- union(enum) to serialize
 
-[DHT]
- - Current block size: 64kb
-   - seems small enough but still substantial
-   - Can store a small image (1200x800 webp 80%)
+[Data]
+- Current block size: 64kb
+	- seems small enough but still substantial
+	- Can store a small image (1200x800 webp 80%)
 
- - Two types of data
-   - Regular Hash Item
- 	 - Stores value, Key is hash of Item
-     - Central storage unit
- - Publish Value Item
-   - Hash public key -> ID
-   - Store operation has: 
-   	   - ID
-	   - public key + signature
-	   - Value to store
-	   - Increment number
+- Two types of data
+	[Regular Hash Item]
+	  - Stores value, Key is hash of Item
+ 	  - Central storage unit
+	[Publish Value Item]
+      - Hash public key -> ID
+      - Makes sure you can't just store any hash
+      - Store operation has: 
+		- ID
+   		- public key + signature
+   		- Value to store
+   		- Increment number
+   	  - Allows to have central place to store and publish
 
-    - Connection Item
-     - ID -> sockaddr
-     - ID is right now disconnected from its connection data
-     - Kademlia stores these in the DB.
-       - hashes conn data and uses that as ID (don't like it)
+These two items can do a lot!
+Together with general Get on Conn ID, you can have safe general updating and publishing.
+
+- Connection Item
+ - ID -> sockaddr
+ - ID is right now disconnected from its connection data
+ - Probably best to keep it disconnected, we can always still store them.
+ - Kademlia stores these in the DB.
+   - hashes conn data and uses that as ID (don't like it)
    
-   These three items can do a lot!
-
+[Redundancy]
+- Redundancy is a real issue.
+- Current schemes store data only in one place!
+- Obviously you should store your own data
+	- Could either be separate DB
+	- Or you flag your data in a hashmap / bloom filter so you don't delete it / know what to backup
+- Other schemes, You don't only store data just right before yourself, but also before ID's in your routing table?
+  - How would this factor in in the routing?
+    - I guess if you happen to have it, just reply immediately.
+    - Also, you can check these items with the node in your table; they should be storing them!
 
 [Network discovery]
 - Initial IP from program input (or db)
@@ -41,14 +55,14 @@ Describes the general design elements
   Request Next: [IDx]
   - [ID ^ b31]  [ID ^ b30] [ID ^ b29] .. [ID ^ b0]
     - the .. part might omit, but we need the last one (next)
-  [ID0] [ID1]       [ID2]       [ID3]
+  [ID0]         [ID1]       [ID2]       [ID3]
 
   - If IDx == ID, return self of course (if known)
   - If IDx <= ID0 and > ID, return ID0
   - Otherwise pass on to nearest ID
   - This should allow network discovery
 
-  
+  - 
 
   Structure:
 - [ID] -> (ID, constring)
@@ -63,6 +77,25 @@ What to do to keep connections up to date?
 - Is there any connection? If not add N from 'knowns'
 - Verify all connections are unconnected (otherwise remove them)
 - Verify connections match routing table (get's updated in its own callback)
+
+[On boarding]
+How do you join the network / let another join
+- Nodes have to interject themselves
+- Do we just send all data?
+  - Seem to be what others do
+  - How do you make sure nothing goes wrong there?
+
+Process from connector
+- You need to find the one before you. This is your lower limit, you store after that.
+	- He should put you in his routing table.
+	- You can test-send a message to yourself.
+
+- You need to find the one after you.
+	- Also you will lower their limit
+	- They should send data to you.
+	- Initial issue, He won't reach you except for a longer path that might not be up to date?
+	- 
+	- Other can have a trail period in which it stores but also sends forward.
 
 [Central Job queue]
 - Jobs get processed in a queue (currently no priority implements, but some fair scheduling might be appropriate)
