@@ -225,7 +225,7 @@ fn handle_response(guid: u64, response: Response) !void {
 
     switch (response) {
         .ping_id => {
-            warn("got resp ping id\n", .{});
+            warn("got resp ping id {}\n", .{response.ping_id});
         },
     }
 
@@ -256,7 +256,7 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             const pipe = c.nng_msg_get_pipe(msg);
             var sockaddr: c.nng_sockaddr = undefined;
             try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
-            try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .sockaddr = sockaddr } } } });
+            try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .id = my_id, .sockaddr = sockaddr } } } });
         },
     }
     // const tag = @as(@TagType(Request), request);
@@ -286,7 +286,7 @@ const PingId = struct {
 };
 
 const Response = union(enum) {
-    ping_id: struct { sockaddr: c.nng_sockaddr },
+    ping_id: struct { id: ID, sockaddr: c.nng_sockaddr },
 };
 
 fn enqueue(job: Job) !void {
@@ -320,6 +320,7 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
             try nng_ret(c.nng_msg_trim(
                 msg,
                 @ptrCast(*c_void, &t),
+                @sizeOf(T),
             ));
         },
         .Pointer => {
@@ -375,8 +376,9 @@ fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
             }
         },
         .Array => {
-            const len = info.Array.size;
-            try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
+            const len = info.Array.len;
+            var tmp = t;
+            try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(meta.Child(T)) * len));
         },
         .Pointer => {
             if (comptime std.meta.trait.isSlice(info)) {
@@ -629,7 +631,7 @@ fn init() !void {
 
     warn("Init\n", .{});
     my_id = rand_id();
-    warn("My ID: {s}", .{my_id});
+    warn("My ID: {x}", .{my_id});
     std.mem.set(u8, nearest_ID[0..], 0);
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
