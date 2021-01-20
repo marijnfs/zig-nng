@@ -1,5 +1,7 @@
 Next
 ====
+- Probably Unify InWorker / OutWorker
+  - both just send and receive, with waiting moments
 
 [API and other messages]
 - GetID, //get ID of connecting node
@@ -28,7 +30,6 @@ Next
 		
 - Make work for 3 user scenario.
 	- needs e
-
 Later
 =====
 - mdns
@@ -51,3 +52,4 @@ Simplest system
   - If no worker is ready, queue again (or fail, perhaps count failure)
 - periodic tasks are added, like
   - Update routing table (updates the outgoing workers)
+
