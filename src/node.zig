@@ -296,37 +296,41 @@ fn enqueue(job: Job) !void {
 fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
     var t: T = undefined;
     const info = @typeInfo(T);
+    warn("desialize_msg: {x}\n", .{msg_to_slice(msg)});
     switch (info) {
         .Struct => {
             inline for (info.Struct.fields) |*field_info| {
                 const name = field_info.name;
                 const FieldType = field_info.field_type;
-                if (comptime meta.trait.isIndexable(FieldType)) {
-                    continue;
-                }
 
                 @field(&t, name) = try deserialise_msg(FieldType, msg);
             }
+            warn("struct:{}\n", .{t});
         },
         .Array => {
-            const len = info.Array.size;
+            const len = info.Array.len;
             const byteSize = @sizeOf(meta.Child(T)) * len;
+            warn("-- array len:{} byte:{}\n", .{ len, byteSize });
             if (c.nng_msg_len(msg) < byteSize) {
                 return error.MsgSmallerThanArray;
             }
+
+            const body_slice = msg_to_slice(msg);
 
             const bodyPtr = @ptrCast(*T, c.nng_msg_body(msg));
             std.mem.copy(u8, &t, bodyPtr);
             try nng_ret(c.nng_msg_trim(
                 msg,
-                @ptrCast(*c_void, &t),
                 @sizeOf(T),
             ));
+            warn("-- array :{x}\n", .{t});
         },
         .Pointer => {
             if (comptime std.meta.trait.isSlice(info)) {
-                try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * t.len));
+                warn("slize:{} byte:{}\n", .{ info.len, @sizeOf(meta.Child(T)) * t.len });
+                var len: u64 = 0;
+                try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
+                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
             } else {
                 @compileError("Expected to serialise slice");
             }
@@ -373,17 +377,20 @@ fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
                 const name = field_info.name;
                 const FieldType = field_info.field_type;
                 try serialise_msg(@field(t, name), msg);
+                warn("serialise .{s}\n", .{name});
             }
         },
         .Array => {
             const len = info.Array.len;
             var tmp = t;
             try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(meta.Child(T)) * len));
+            warn("Array: write {} bytes", .{@sizeOf(meta.Child(T)) * len});
         },
         .Pointer => {
             if (comptime std.meta.trait.isSlice(info)) {
                 try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
                 try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * t.len));
+                warn("Pointer: write {} bytes", .{@sizeOf(meta.Child(T)) * t.len});
             } else {
                 @compileError("Expected to serialise slice");
             }
@@ -464,7 +471,7 @@ const Job = union(enum) {
 
                 const guid = self.send_response.guid;
                 const response = self.send_response.response;
-
+                warn("serialise and send {}\n", .{response});
                 var response_msg: ?*c.nng_msg = undefined;
                 try nng_ret(c.nng_msg_alloc(&response_msg, 0));
 
@@ -476,7 +483,7 @@ const Job = union(enum) {
                 warn("guid {}, msg: {}\n", .{ guid, response_msg });
                 for (incoming_workers) |w| {
                     if (w.guid == guid and w.state == .Wait) {
-                        warn("responseing\n", .{});
+                        warn("responding \n", .{});
                         w.send(response_msg.?);
                         break;
                     }
@@ -631,7 +638,7 @@ fn init() !void {
 
     warn("Init\n", .{});
     my_id = rand_id();
-    warn("My ID: {x}", .{my_id});
+    warn("My ID: {x}\n", .{my_id});
     std.mem.set(u8, nearest_ID[0..], 0);
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
@@ -731,6 +738,7 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             work.state = InWork.State.Wait;
 
             // We deserialise the message in a request
+
             const request = deserialise_msg(Request, msg.?) catch unreachable;
 
             // We still add the msg, in case we need to query extra information
@@ -820,22 +828,28 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
 
         .Wait => {
-            nng_ret(c.nng_aio_result(work.aio)) catch return;
+            nng_ret(c.nng_aio_result(work.aio)) catch unreachable;
 
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
 
-            warn("response msg size: {}\n", .{c.nng_msg_len(msg)});
+            warn("RESPONSE msg size: {}\n", .{c.nng_msg_len(msg)});
 
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
                 warn("couldn't trim guid\n", .{});
             };
             warn("read guid: {}\n", .{guid});
-
+            warn("rest: {x}\n", .{msg_to_slice(msg.?)});
             const response = deserialise_msg(Response, msg.?) catch unreachable;
-
+            warn("desir response: {}\n", .{response});
             enqueue(Job{ .handle_response = .{ .guid = guid, .response = response } }) catch unreachable;
             work.state = .Ready;
+
+            switch (response) {
+                .ping_id => {
+                    warn("ping response {}\n", .{response.ping_id});
+                },
+            }
         },
 
         .Unconnected => {
@@ -891,4 +905,9 @@ pub fn main() !void {
     try event_queue.push(Job{ .bootstrap = .{ .n = 4 } });
 
     event_thread.wait();
+}
+
+test "serialise" {
+    var sock_main: c.nng_msg = undefined;
+    try nng_ret(c.nng_rep0_open(&main_socket));
 }
