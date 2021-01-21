@@ -1,4 +1,6 @@
 const std = @import("std");
+const fmt = std.fmt;
+
 const ArrayList = std.ArrayList;
 const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
@@ -184,11 +186,11 @@ fn read_lines(context: void) !void {
             },
             else => return e,
         });
-        try event_queue.push(Job{ .handle_stdin_line = .{ .buffer = line } });
+        try enqueue(Job{ .handle_stdin_line = .{ .buffer = line } });
     }
 }
 
-fn print_nng_sockaddr(sockaddr: c.nng_sockaddr, with_port: bool) ![]u8 {
+fn sockaddr_to_string(sockaddr: c.nng_sockaddr, with_port: bool) ![:0]u8 {
     const fam = sockaddr.s_family;
 
     if (fam == c.NNG_AF_INET) {
@@ -196,14 +198,14 @@ fn print_nng_sockaddr(sockaddr: c.nng_sockaddr, with_port: bool) ![]u8 {
 
         var addr = ipv4.sa_addr;
         const addr_ptr = @ptrCast([*]u8, &addr);
-        const buffer = if (!with_port) try std.fmt.allocPrint(allocator, "{}.{}.{}.{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port }) else std.fmt.allocPrint(allocator, "{}.{}.{}.{}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
+        const buffer = if (!with_port) try std.fmt.allocPrintZ(allocator, "{}.{}.{}.{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3] }) else std.fmt.allocPrintZ(allocator, "{}.{}.{}.{}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
         return buffer;
     }
     if (fam == c.NNG_AF_INET6) {
         const ipv6 = sockaddr.s_in6;
         var addr = ipv6.sa_addr;
         const addr_ptr = @ptrCast([*]u8, &addr);
-        const buffer = try std.fmt.allocPrint(allocator, "{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:/{}", .{
+        const buffer = try std.fmt.allocPrintZ(allocator, "{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:/{}", .{
             addr_ptr[0],  addr_ptr[1],  addr_ptr[2],  addr_ptr[3],  addr_ptr[4],
             addr_ptr[5],  addr_ptr[6],  addr_ptr[7],  addr_ptr[8],  addr_ptr[9],
             addr_ptr[10], addr_ptr[11], addr_ptr[12], addr_ptr[13], addr_ptr[14],
@@ -256,7 +258,10 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             const pipe = c.nng_msg_get_pipe(msg);
             var sockaddr: c.nng_sockaddr = undefined;
             try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
-            try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .id = my_id, .sockaddr = sockaddr } } } });
+            const with_port = false;
+            const address_str = try sockaddr_to_string(sockaddr, with_port);
+            warn("ping from {s}\n", .{address_str});
+            try enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .id = my_id, .sockaddr = sockaddr } } } });
         },
     }
     // const tag = @as(@TagType(Request), request);
@@ -266,7 +271,7 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
     // var sockaddr: c.nng_sockaddr = undefined;
     // try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
 
-    //         try event_queue.push(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{. sockaddr = sockaddr} } } });
+    //         try enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{. sockaddr = sockaddr} } } });
     //     },
     // }
 }
@@ -862,13 +867,6 @@ const InternalWork = struct {
     const State = enum {};
 };
 
-fn sockToString(addr: c.nng_sockaddr) [:0]u8 {
-    if (addr.s_family == c.NNG_AF_INET) {
-        var in_addr = addr.s_in.sa_addr;
-        return fmt.allocPrint(allocator, "tcp://{}", .{in_addr});
-    }
-}
-
 pub fn main() !void {
     try init();
 
@@ -902,7 +900,7 @@ pub fn main() !void {
         inWorkCallback(w.toOpaque());
     }
 
-    try event_queue.push(Job{ .bootstrap = .{ .n = 4 } });
+    try enqueue(Job{ .bootstrap = .{ .n = 4 } });
 
     event_thread.wait();
 }

@@ -6,9 +6,15 @@ Describes the general design elements
 	- union(enum) to serialize.
 
 [Xor]
+
+      /\
+    /\  /\
+    x y z n
+    x -> y z n
+    y -> x n z
 - Central distance unit.
 - Store nearest to ID's created from own ID
-- Store everything nearer than nearest connected ID in routing talbe.
+- Store everything nearer than nearest connected ID in routing table.
 - Nearest ID (and n id's above that), gives idea of network size.
 	- Three of nearest ID, next ID above, ..etc.
 
