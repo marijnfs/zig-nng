@@ -56,7 +56,11 @@ var known_addresses = std.ArrayList([:0]u8).init(allocator);
 var self_addresses = std.StringHashMap(bool).init(allocator);
 
 // Our routing table
-var routing_table = std.AutoHashMap(ID, []u8).init(allocator);
+const PeerInfo = struct {
+    id: ID,
+    address: [:0]u8,
+};
+var routing_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
 // Our connections
 var connections = std.ArrayList(*Connection).init(allocator);
@@ -115,6 +119,10 @@ const Connection = struct {
     fn dial(self: *Connection) !void {
         warn("dialing {s}\n", .{self.address});
         try nng_ret(c.nng_dial(self.socket, self.address, 0, 0));
+    }
+
+    fn listen(self: *Connection) !void {
+        try nng_ret(c.nng_listen(main_socket, address, 0, 0));
     }
 };
 
@@ -175,8 +183,6 @@ fn read_lines(context: void) !void {
     warn("Console started\n", .{});
 
     var buf: [4096]u8 = undefined;
-    // const stdout = std.io.getStdOut().inStream();
-    // const readUntil = stdin.readUntilDelimiterOrEof;
 
     while (true) {
         const line = (std.io.getStdIn().reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize)) catch |e| switch (e) {
@@ -198,19 +204,28 @@ fn sockaddr_to_string(sockaddr: c.nng_sockaddr, with_port: bool) ![:0]u8 {
 
         var addr = ipv4.sa_addr;
         const addr_ptr = @ptrCast([*]u8, &addr);
-        const buffer = if (!with_port) try std.fmt.allocPrintZ(allocator, "{}.{}.{}.{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3] }) else std.fmt.allocPrintZ(allocator, "{}.{}.{}.{}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
+        const buffer = if (!with_port) try std.fmt.allocPrintZ(allocator, "tcp://{}.{}.{}.{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3] }) else std.fmt.allocPrintZ(allocator, "{}.{}.{}.{}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
         return buffer;
     }
     if (fam == c.NNG_AF_INET6) {
         const ipv6 = sockaddr.s_in6;
         var addr = ipv6.sa_addr;
         const addr_ptr = @ptrCast([*]u8, &addr);
-        const buffer = try std.fmt.allocPrintZ(allocator, "{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:/{}", .{
-            addr_ptr[0],  addr_ptr[1],  addr_ptr[2],  addr_ptr[3],  addr_ptr[4],
-            addr_ptr[5],  addr_ptr[6],  addr_ptr[7],  addr_ptr[8],  addr_ptr[9],
-            addr_ptr[10], addr_ptr[11], addr_ptr[12], addr_ptr[13], addr_ptr[14],
-            addr_ptr[15], ipv6.sa_port,
-        });
+
+        const buffer = if (with_port)
+            try std.fmt.allocPrintZ(allocator, "tcp://{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:/{}", .{
+                addr_ptr[0],  addr_ptr[1],  addr_ptr[2],  addr_ptr[3],  addr_ptr[4],
+                addr_ptr[5],  addr_ptr[6],  addr_ptr[7],  addr_ptr[8],  addr_ptr[9],
+                addr_ptr[10], addr_ptr[11], addr_ptr[12], addr_ptr[13], addr_ptr[14],
+                addr_ptr[15], ipv6.sa_port,
+            })
+        else
+            try std.fmt.allocPrintZ(allocator, "{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}:{x}{x}", .{
+                addr_ptr[0],  addr_ptr[1],  addr_ptr[2],  addr_ptr[3],  addr_ptr[4],
+                addr_ptr[5],  addr_ptr[6],  addr_ptr[7],  addr_ptr[8],  addr_ptr[9],
+                addr_ptr[10], addr_ptr[11], addr_ptr[12], addr_ptr[13], addr_ptr[14],
+                addr_ptr[15],
+            });
         return buffer;
     }
 
@@ -226,32 +241,20 @@ fn handle_response(guid: u64, response: Response) !void {
     }
 
     switch (response) {
+        // .peer_before => {},
         .ping_id => {
             warn("got resp ping id {}\n", .{response.ping_id});
+            const port = false;
+            const my_addr_string = try sockaddr_to_string(response.ping_id.sockaddr, port);
+            try self_addresses.put(my_addr_string, true);
+            var conn = try connection_by_guid(guid);
+            conn.id = response.ping_id.id;
         },
     }
-
-    // // Ping
-    // var sockaddr: c.nng_sockaddr = undefined;
-    // std.mem.copy(u8, @ptrCast([*]u8, &sockaddr)[0..@sizeOf(c.nng_sockaddr)], body[0..@sizeOf(c.nng_sockaddr)]);
-
-    // var my_addr = try print_nng_sockaddr(sockaddr);
-    // warn("my addr: {s}\n", .{my_addr});
-    // body = body[@sizeOf(c.nng_sockaddr)..];
-
-    // var response_id: ID = undefined;
-    // warn("body: {}\n", .{body});
-    // std.mem.copy(u8, response_id[0..], body);
-    // warn("response id: {}\n", .{response_id});
-
-    // var conn = try connection_by_guid(guid);
-    // warn("conn[{}] {}\n", .{ guid, conn });
-    // conn.id = response_id;
-
-    // warn("set conn to {}\n", .{conn});
 }
 
 fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
+    warn("req{}\n", .{request});
     switch (request) {
         .ping_id => {
             warn("requesting pingid\n", .{});
@@ -259,21 +262,16 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             var sockaddr: c.nng_sockaddr = undefined;
             try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
             const with_port = false;
+
+            // connecting addr, add it to known
             const address_str = try sockaddr_to_string(sockaddr, with_port);
+            try known_addresses.append(address_str);
             warn("ping from {s}\n", .{address_str});
             try enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .id = my_id, .sockaddr = sockaddr } } } });
         },
+        // .peer_before => {},
     }
-    // const tag = @as(@TagType(Request), request);
-    // switch (tag) {
-    //     .ping_id => {
-    //             const pipe = c.nng_msg_get_pipe(msg);
-    // var sockaddr: c.nng_sockaddr = undefined;
-    // try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
-
-    //         try enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{. sockaddr = sockaddr} } } });
-    //     },
-    // }
+    warn("after switch\n", .{});
 }
 
 fn msg_to_slice(msg: *c.nng_msg) []u8 {
@@ -283,15 +281,13 @@ fn msg_to_slice(msg: *c.nng_msg) []u8 {
 }
 
 const Request = union(enum) {
-    ping_id: struct {}
-};
-
-const PingId = struct {
-    guid: Guid, //target connection guid
+    ping_id: ID,
+    // peer_before: ID,
 };
 
 const Response = union(enum) {
     ping_id: struct { id: ID, sockaddr: c.nng_sockaddr },
+    // peer_before: ID,
 };
 
 fn enqueue(job: Job) !void {
@@ -301,7 +297,7 @@ fn enqueue(job: Job) !void {
 fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
     var t: T = undefined;
     const info = @typeInfo(T);
-    warn("desialize_msg: {x}\n", .{msg_to_slice(msg)});
+
     switch (info) {
         .Struct => {
             inline for (info.Struct.fields) |*field_info| {
@@ -310,12 +306,11 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
 
                 @field(&t, name) = try deserialise_msg(FieldType, msg);
             }
-            warn("struct:{}\n", .{t});
         },
         .Array => {
             const len = info.Array.len;
             const byteSize = @sizeOf(meta.Child(T)) * len;
-            warn("-- array len:{} byte:{}\n", .{ len, byteSize });
+
             if (c.nng_msg_len(msg) < byteSize) {
                 return error.MsgSmallerThanArray;
             }
@@ -332,7 +327,6 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
         },
         .Pointer => {
             if (comptime std.meta.trait.isSlice(info)) {
-                warn("slize:{} byte:{}\n", .{ info.len, @sizeOf(meta.Child(T)) * t.len });
                 var len: u64 = 0;
                 try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
                 try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
@@ -434,10 +428,10 @@ const Job = union(enum) {
     send_response: ResponseData,
 
     handle_stdin_line: HandleStdinLine,
+    manage_connections: void,
+    refresh_routing_table: void,
 
     fn work(self: *Job) !void {
-        warn("job: {}\n", .{self});
-
         switch (self.*) {
             .send_request => {
                 const guid = self.send_request.guid;
@@ -453,13 +447,10 @@ const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                warn("finding guid\n", .{});
                 warn("n outgoing: {}\n", .{outgoing_workers.items.len});
                 for (outgoing_workers.items) |out_worker| {
                     if (out_worker.accepting() and out_worker.guid == guid) {
-                        warn("out_worker {}\n", .{out_worker});
-
-                        warn("send to guid: {}\n", .{guid});
+                        warn("selected out_worker {}\n", .{out_worker});
 
                         out_worker.send(request_msg.?);
 
@@ -546,7 +537,7 @@ const Job = union(enum) {
                 out_worker.guid = conn.guid;
                 try outgoing_workers.append(out_worker);
 
-                try enqueue(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .ping_id = .{} } } });
+                try enqueue(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .ping_id = std.mem.zeroes(ID) } } });
             },
 
             .handle_response => {
@@ -574,6 +565,20 @@ const Job = union(enum) {
                     warn("get: {s}\n", .{buf});
                 }
             },
+            .manage_connections => {
+                //check if there are any connections
+                if (connections.items.len == 0) {
+                    if (known_addresses.items.len == 0) {
+                        warn("No connections, no known addresses\n", .{});
+                        return;
+                    }
+                    const r = rng.random.uintLessThan(usize, known_addresses.items.len);
+                    try enqueue(Job{
+                        .connect = .{ .address = known_addresses.items[r] },
+                    });
+                }
+            },
+            .refresh_routing_table => {},
         }
     }
 };
@@ -627,16 +632,6 @@ fn nng_ret(code: c_int) !void {
     }
 }
 
-fn nng_append_array(msg: *c.nng_msg, buf: []const u8) !void {
-    try nng_ret(c.nng_msg_append_u64(@intCast(u64, buf.len)));
-}
-
-fn nng_append(msg: *c.nng_msg, buf: anytype) !void {
-    try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &buf), @sizeOf(buf)));
-
-    try nng_ret(c.nng_msg_append(@intCast(u64, buf.len)));
-}
-
 fn init() !void {
     root_guid = rng.random.int(u64);
     self_guid = get_guid();
@@ -654,7 +649,6 @@ fn init() !void {
 const InWork = struct {
     const State = enum {
         Init,
-        Send,
         Recv,
         Wait,
     };
@@ -676,7 +670,7 @@ const InWork = struct {
     pub fn send(w: *InWork, msg: *c.nng_msg) void {
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
-        w.state = .Send;
+        w.state = .Wait;
     }
 
     pub fn alloc(sock: c.nng_socket) !*InWork {
@@ -710,7 +704,8 @@ fn get_guid() Guid {
 fn timer_threadfunc(context: void) !void {
     warn("Timer thread\n", .{});
     while (true) {
-        c.nng_msleep(3000);
+        c.nng_msleep(10000);
+        try enqueue(Job{ .manage_connections = {} });
     }
 }
 
@@ -719,10 +714,6 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = InWork.fromOpaque(arg);
     switch (work.state) {
         .Init => {
-            c.nng_ctx_recv(work.ctx, work.aio);
-            work.state = .Recv;
-        },
-        .Send => {
             c.nng_ctx_recv(work.ctx, work.aio);
             work.state = .Recv;
         },
@@ -743,28 +734,15 @@ fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             work.state = InWork.State.Wait;
 
             // We deserialise the message in a request
-
             const request = deserialise_msg(Request, msg.?) catch unreachable;
 
             // We still add the msg, in case we need to query extra information
             enqueue(Job{ .handle_request = .{ .guid = guid, .request = request, .msg = msg.? } }) catch |e| {
                 warn("error: {}\n", .{e});
             };
-
-            // Put this work in a callback!
         },
 
         .Wait => {},
-
-        // InWork.State.Send => {
-        //     const r = c.nng_aio_result(work.aio);
-        //     if (r != 0) {
-        //         c.nng_msg_free(work.msg);
-        //         fatal("nng_ctx_send", r);
-        //     }
-        //     work.state = InWork.State.Recv;
-        //     c.nng_ctx_recv(work.ctx, work.aio);
-        // },
     }
 }
 
@@ -838,23 +816,13 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
 
-            warn("RESPONSE msg size: {}\n", .{c.nng_msg_len(msg)});
-
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
                 warn("couldn't trim guid\n", .{});
             };
             warn("read guid: {}\n", .{guid});
-            warn("rest: {x}\n", .{msg_to_slice(msg.?)});
             const response = deserialise_msg(Response, msg.?) catch unreachable;
-            warn("desir response: {}\n", .{response});
             enqueue(Job{ .handle_response = .{ .guid = guid, .response = response } }) catch unreachable;
             work.state = .Ready;
-
-            switch (response) {
-                .ping_id => {
-                    warn("ping response {}\n", .{response.ping_id});
-                },
-            }
         },
 
         .Unconnected => {
@@ -862,10 +830,6 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
     }
 }
-
-const InternalWork = struct {
-    const State = enum {};
-};
 
 pub fn main() !void {
     try init();
