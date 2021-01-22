@@ -241,7 +241,6 @@ fn handle_response(guid: u64, response: Response) !void {
     }
 
     switch (response) {
-        // .peer_before => {},
         .ping_id => {
             warn("got resp ping id {}\n", .{response.ping_id});
             const port = false;
@@ -250,6 +249,7 @@ fn handle_response(guid: u64, response: Response) !void {
             var conn = try connection_by_guid(guid);
             conn.id = response.ping_id.id;
         },
+        .peer_before => {},
     }
 }
 
@@ -269,7 +269,7 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             warn("ping from {s}\n", .{address_str});
             try enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .id = my_id, .sockaddr = sockaddr } } } });
         },
-        // .peer_before => {},
+        .peer_before => {},
     }
     warn("after switch\n", .{});
 }
@@ -282,12 +282,12 @@ fn msg_to_slice(msg: *c.nng_msg) []u8 {
 
 const Request = union(enum) {
     ping_id: ID,
-    // peer_before: ID,
+    peer_before: ID,
 };
 
 const Response = union(enum) {
     ping_id: struct { id: ID, sockaddr: c.nng_sockaddr },
-    // peer_before: ID,
+    peer_before: ID,
 };
 
 fn enqueue(job: Job) !void {
@@ -338,13 +338,13 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
             if (comptime info.Union.tag_type) |TagType| {
                 // const TagType = @TagType(T);
                 const active_tag = try deserialise_msg(TagType, msg);
-
                 inline for (info.Union.fields) |field_info| {
                     if (@field(TagType, field_info.name) == active_tag) {
                         const name = field_info.name;
                         const FieldType = field_info.field_type;
-
-                        @field(t, name) = try deserialise_msg(FieldType, msg);
+                        warn("deserialize type: {}\n", .{FieldType});
+                        t = @unionInit(T, name, try deserialise_msg(FieldType, msg));
+                        // @field(t, name) = try deserialise_msg(FieldType, msg);
                     }
                 }
             } else { // c struct or general struct
