@@ -140,13 +140,13 @@ const Connect = struct {
     address: [:0]const u8,
 };
 
-const RequestData = struct {
+const RequestEnvelope = struct {
     id: ID = undefined, //recipient
     guid: Guid = 0, //internal processing id
     request: Request, msg: *c.nng_msg = undefined
 };
 
-const ResponseData = struct {
+const ResponseEnvelope = struct {
     id: ID = undefined, //recipient
     guid: Guid = 0, //internal processing id
     response: Response,
@@ -280,6 +280,13 @@ fn msg_to_slice(msg: *c.nng_msg) []u8 {
     return body[0..len];
 }
 
+fn msg_to_ptr(comptime T: type, msg: *c.nng_msg) !*T {
+    const len = c.nng_msg_len(msg);
+    if (len < @sizeOf(T))
+        return error.ReadBeyondLimit;
+    return @ptrCast(*T, c.nng_msg_body(msg));
+}
+
 const Request = union(enum) {
     ping_id: ID,
     peer_before: ID,
@@ -297,7 +304,7 @@ fn enqueue(job: Job) !void {
 fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
     var t: T = undefined;
     const info = @typeInfo(T);
-
+    warn("deserialise info:{}, slice{}\n", .{ T, msg_to_slice(msg) });
     switch (info) {
         .Struct => {
             inline for (info.Struct.fields) |*field_info| {
@@ -317,26 +324,25 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
 
             const body_slice = msg_to_slice(msg);
 
-            const bodyPtr = @ptrCast(*T, c.nng_msg_body(msg));
+            const bodyPtr = try msg_to_ptr(T, msg);
             std.mem.copy(u8, &t, bodyPtr);
             try nng_ret(c.nng_msg_trim(
                 msg,
                 @sizeOf(T),
             ));
-            warn("-- array :{x}\n", .{t});
         },
         .Pointer => {
+            warn("pointer\n", {});
             if (comptime std.meta.trait.isSlice(info)) {
-                var len: u64 = 0;
-                try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
+                // var len: u64 = 0;
+                // try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
+                // try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
             } else {
                 @compileError("Expected to serialise slice");
             }
         },
         .Union => {
             if (comptime info.Union.tag_type) |TagType| {
-                // const TagType = @TagType(T);
                 const active_tag = try deserialise_msg(TagType, msg);
                 inline for (info.Union.fields) |field_info| {
                     if (@field(TagType, field_info.name) == active_tag) {
@@ -344,11 +350,18 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                         const FieldType = field_info.field_type;
                         warn("deserialize type: {}\n", .{FieldType});
                         t = @unionInit(T, name, try deserialise_msg(FieldType, msg));
-                        // @field(t, name) = try deserialise_msg(FieldType, msg);
                     }
                 }
             } else { // c struct or general struct
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(T)));
+                warn("Struct\n", .{});
+                const bytes_mem = std.mem.asBytes(&t);
+                const msg_slice = msg_to_slice(msg);
+                if (bytes_mem.len > msg_slice.len)
+                    return error.FailedToDeserialize;
+                warn("normal/c struct?{}, {}\n", .{ bytes_mem, msg_slice });
+                std.mem.copy(u8, std.mem.asBytes(&t), msg_to_slice(msg));
+                try nng_ret(c.nng_msg_trim(msg, @sizeOf(T)));
+                warn("other str: {}\n", .{@sizeOf(T)});
             }
         },
         .Enum => {
@@ -406,6 +419,10 @@ fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
                         try serialise_msg(@field(t, name), msg);
                     }
                 }
+            } else {
+                const bytes_mem = std.mem.asBytes(&t);
+                var tmp = t;
+                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(T)));
             }
         },
         .Enum => {
@@ -421,11 +438,11 @@ const Job = union(enum) {
     get: GuidKeyValue,
     bootstrap: Bootstrap,
 
-    handle_request: RequestData,
-    handle_response: ResponseData,
+    handle_request: RequestEnvelope,
+    handle_response: ResponseEnvelope,
 
-    send_request: RequestData,
-    send_response: ResponseData,
+    send_request: RequestEnvelope,
+    send_response: ResponseEnvelope,
 
     handle_stdin_line: HandleStdinLine,
     manage_connections: void,
