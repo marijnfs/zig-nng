@@ -6,28 +6,18 @@ const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
 const AtomicQueue = @import("queue.zig").AtomicQueue;
 const meta = std.meta;
+const warn = std.debug.warn;
 
 const crypto = std.crypto;
 
 const c = @import("c.zig").c;
-const warn = std.debug.warn;
+const nng_ret = @import("c.zig").nng_ret;
 
-const allocator = std.heap.page_allocator;
-const ID_SIZE = 32;
-const ID = [32]u8;
-
-const N_INCOMING_WORKERS = 4;
-const N_OUTGOING_WORKERS = 4;
-
-// We are currently going for 64kb blocks
-const BIT_PER_BLOCK = 16;
-const BLOCK_SIZE = 1 << BIT_PER_BLOCK;
-const ROUTING_TABLE_SIZE = 16;
-
-const Block = []u8;
-
-const Guid = u64;
-var root_guid: Guid = undefined;
+const defines = @import("defines.zig");
+const Guid = defines.Guid;
+const ID = defines.ID;
+const Block = defines.Block;
+const allocator = defines.allocator;
 
 // Guid that will be used to signify self-id
 var self_guid: Guid = undefined;
@@ -65,66 +55,12 @@ var routing_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 // Our connections
 var connections = std.ArrayList(*Connection).init(allocator);
 
-var incoming_workers: [N_INCOMING_WORKERS]*InWork = undefined;
+var incoming_workers: [defines.N_INCOMING_WORKERS]*InWork = undefined;
 var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
 
 var main_socket: c.nng_socket = undefined;
 
-var rng = std.rand.DefaultPrng.init(0);
-
-const Connection = struct {
-    guid: Guid,
-    address: [:0]const u8,
-
-    id: ID = undefined,
-    n_workers: usize = 0,
-    socket: c.nng_socket = undefined,
-
-    fn id_known() bool {
-        for (id) |d| {
-            if (d != 0)
-                return true;
-        }
-        return false;
-    }
-
-    fn alloc() !*Connection {
-        return try allocator.create(Connection);
-    }
-
-    fn init(self: *Connection, address: [:0]const u8) void {
-        warn("self guid: {}", .{self_guid});
-        self.* = Connection{
-            .address = address,
-            .guid = get_guid(),
-        };
-
-        std.mem.set(u8, self.id[0..], 0);
-    }
-
-    fn req_open(
-        self: *Connection,
-    ) !void {
-        warn("req open {s}\n", .{self.address});
-        var r: c_int = undefined;
-        try nng_ret(c.nng_req0_open(&self.socket));
-    }
-
-    fn rep_open(self: *Connection) !void {
-        warn("rep open {s}\n", .{self.address});
-        var r: c_int = undefined;
-        try nng_ret(c.nng_rep0_open(self.sock));
-    }
-
-    fn dial(self: *Connection) !void {
-        warn("dialing {s}\n", .{self.address});
-        try nng_ret(c.nng_dial(self.socket, self.address, 0, 0));
-    }
-
-    fn listen(self: *Connection) !void {
-        try nng_ret(c.nng_listen(main_socket, address, 0, 0));
-    }
-};
+const Connection = @import("connection.zig");
 
 const GuidKeyValue = struct {
     guid: u64 = 0, //source of request
@@ -271,7 +207,6 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
         },
         .peer_before => {},
     }
-    warn("after switch\n", .{});
 }
 
 fn msg_to_slice(msg: *c.nng_msg) []u8 {
@@ -304,7 +239,7 @@ fn enqueue(job: Job) !void {
 fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
     var t: T = undefined;
     const info = @typeInfo(T);
-    warn("deserialise info:{}, slice{}\n", .{ T, msg_to_slice(msg) });
+
     switch (info) {
         .Struct => {
             inline for (info.Struct.fields) |*field_info| {
@@ -332,7 +267,6 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
             ));
         },
         .Pointer => {
-            warn("pointer\n", {});
             if (comptime std.meta.trait.isSlice(info)) {
                 // var len: u64 = 0;
                 // try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
@@ -353,15 +287,12 @@ fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                     }
                 }
             } else { // c struct or general struct
-                warn("Struct\n", .{});
                 const bytes_mem = std.mem.asBytes(&t);
                 const msg_slice = msg_to_slice(msg);
                 if (bytes_mem.len > msg_slice.len)
                     return error.FailedToDeserialize;
-                warn("normal/c struct?{}, {}\n", .{ bytes_mem, msg_slice });
                 std.mem.copy(u8, std.mem.asBytes(&t), msg_to_slice(msg));
                 try nng_ret(c.nng_msg_trim(msg, @sizeOf(T)));
-                warn("other str: {}\n", .{@sizeOf(T)});
             }
         },
         .Enum => {
@@ -389,20 +320,17 @@ fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
                 const name = field_info.name;
                 const FieldType = field_info.field_type;
                 try serialise_msg(@field(t, name), msg);
-                warn("serialise .{s}\n", .{name});
             }
         },
         .Array => {
             const len = info.Array.len;
             var tmp = t;
             try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(meta.Child(T)) * len));
-            warn("Array: write {} bytes", .{@sizeOf(meta.Child(T)) * len});
         },
         .Pointer => {
             if (comptime std.meta.trait.isSlice(info)) {
                 try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
                 try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * t.len));
-                warn("Pointer: write {} bytes", .{@sizeOf(meta.Child(T)) * t.len});
             } else {
                 @compileError("Expected to serialise slice");
             }
@@ -565,31 +493,29 @@ const Job = union(enum) {
             },
             .handle_stdin_line => {
                 const buf = self.handle_stdin_line.buffer;
-                warn("handle: {s}\n", .{buf});
                 const space = std.mem.lastIndexOf(u8, buf, " ");
                 if (space) |idx| {
                     const key = buf[0..idx];
                     const hash = calculate_hash(key);
                     const value = buf[idx + 1 ..];
-                    warn("val: {s}:{s}\n", .{ key, value });
                     try enqueue(Job{ .store = .{ .key = hash, .value = value, .guid = 0 } });
                 } else {
                     const key = buf;
                     const hash = calculate_hash(key);
 
                     try enqueue(Job{ .get = .{ .key = hash, .guid = 0 } });
-
-                    warn("get: {s}\n", .{buf});
                 }
             },
             .manage_connections => {
                 //check if there are any connections
+                warn("Found {} connections\n", .{connections.items});
                 if (connections.items.len == 0) {
+                    warn("no connections found, looking for more\n", .{});
                     if (known_addresses.items.len == 0) {
                         warn("No connections, no known addresses\n", .{});
                         return;
                     }
-                    const r = rng.random.uintLessThan(usize, known_addresses.items.len);
+                    const r = defines.rng.random.uintLessThan(usize, known_addresses.items.len);
                     try enqueue(Job{
                         .connect = .{ .address = known_addresses.items[r] },
                     });
@@ -638,20 +564,14 @@ fn calculate_hash(data: []const u8) ID {
 
 fn rand_id() ID {
     var id: ID = undefined;
-    rng.random.bytes(id[0..]);
+    std.crypto.random.bytes(&id);
     return id;
 }
 
-fn nng_ret(code: c_int) !void {
-    if (code != 0) {
-        std.debug.warn("nng_err: {s}\n", .{c.nng_strerror(code)});
-        return error.NNG;
-    }
-}
-
 fn init() !void {
-    root_guid = rng.random.int(u64);
-    self_guid = get_guid();
+    defines.init();
+
+    self_guid = defines.get_guid();
 
     warn("Init\n", .{});
     my_id = rand_id();
@@ -707,13 +627,6 @@ fn ceil_log2(n: usize) usize {
     if (n == 0)
         return 0;
     return @floatToInt(usize, std.math.log2(@intToFloat(f64, n)));
-}
-
-// unique id for message work
-fn get_guid() Guid {
-    const order = @import("builtin").AtomicOrder.Monotonic;
-    var val = @atomicRmw(u64, &root_guid, .Add, 1, order);
-    return val;
 }
 
 //thread to periodically queue work
@@ -836,7 +749,7 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
                 warn("couldn't trim guid\n", .{});
             };
-            warn("read guid: {}\n", .{guid});
+            warn("read response guid: {}\n", .{guid});
             const response = deserialise_msg(Response, msg.?) catch unreachable;
             enqueue(Job{ .handle_response = .{ .guid = guid, .response = response } }) catch unreachable;
             work.state = .Ready;

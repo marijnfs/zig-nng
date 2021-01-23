@@ -7,3 +7,10 @@ pub const c = @cImport({
 
     @cInclude("nng/supplemental/util/platform.h");
 });
+
+pub fn nng_ret(code: c_int) !void {
+    if (code != 0) {
+        std.debug.warn("nng_err: {s}\n", .{c.nng_strerror(code)});
+        return error.NNG;
+    }
+}
