@@ -644,7 +644,7 @@ fn rand_id() ID {
 
 fn nng_ret(code: c_int) !void {
     if (code != 0) {
-        std.debug.warn("nng_err: {}\n", .{@ptrCast([*]const u8, c.nng_strerror(code))});
+        std.debug.warn("nng_err: {s}\n", .{c.nng_strerror(code)});
         return error.NNG;
     }
 }
