@@ -1,16 +1,12 @@
 const std = @import("std");
 const fmt = std.fmt;
-
 const ArrayList = std.ArrayList;
 const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
-const AtomicQueue = @import("queue.zig").AtomicQueue;
-const meta = std.meta;
 const warn = std.debug.warn;
 
-const crypto = std.crypto;
-
 const c = @import("c.zig").c;
+const AtomicQueue = @import("queue.zig").AtomicQueue;
 const nng_ret = @import("c.zig").nng_ret;
 
 const defines = @import("defines.zig");
@@ -18,6 +14,9 @@ const Guid = defines.Guid;
 const ID = defines.ID;
 const Block = defines.Block;
 const allocator = defines.allocator;
+
+const serialise_msg = @import("serialise.zig").serialise_msg;
+const deserialise_msg = @import("serialise.zig").deserialise_msg;
 
 // Guid that will be used to signify self-id
 var self_guid: Guid = undefined;
@@ -172,7 +171,6 @@ fn sockaddr_to_string(sockaddr: c.nng_sockaddr, with_port: bool) ![:0]u8 {
 }
 
 fn handle_response(guid: u64, response: Response) !void {
-    // var body = msg_to_slice(msg);
     var for_me: bool = guid == self_guid;
 
     if (for_me) {
@@ -212,19 +210,6 @@ fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
     }
 }
 
-fn msg_to_slice(msg: *c.nng_msg) []u8 {
-    const len = c.nng_msg_len(msg);
-    const body = @ptrCast([*]u8, c.nng_msg_body(msg));
-    return body[0..len];
-}
-
-fn msg_to_ptr(comptime T: type, msg: *c.nng_msg) !*T {
-    const len = c.nng_msg_len(msg);
-    if (len < @sizeOf(T))
-        return error.ReadBeyondLimit;
-    return @ptrCast(*T, c.nng_msg_body(msg));
-}
-
 const Request = union(enum) {
     ping_id: ID,
     peer_before: ID,
@@ -237,130 +222,6 @@ const Response = union(enum) {
 
 fn enqueue(job: Job) !void {
     try event_queue.push(job);
-}
-
-fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
-    var t: T = undefined;
-    const info = @typeInfo(T);
-
-    switch (info) {
-        .Struct => {
-            inline for (info.Struct.fields) |*field_info| {
-                const name = field_info.name;
-                const FieldType = field_info.field_type;
-
-                @field(&t, name) = try deserialise_msg(FieldType, msg);
-            }
-        },
-        .Array => {
-            const len = info.Array.len;
-            const byteSize = @sizeOf(meta.Child(T)) * len;
-
-            if (c.nng_msg_len(msg) < byteSize) {
-                return error.MsgSmallerThanArray;
-            }
-
-            const body_slice = msg_to_slice(msg);
-
-            const bodyPtr = try msg_to_ptr(T, msg);
-            std.mem.copy(u8, &t, bodyPtr);
-            try nng_ret(c.nng_msg_trim(
-                msg,
-                @sizeOf(T),
-            ));
-        },
-        .Pointer => {
-            if (comptime std.meta.trait.isSlice(info)) {
-                // var len: u64 = 0;
-                // try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
-                // try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
-            } else {
-                @compileError("Expected to serialise slice");
-            }
-        },
-        .Union => {
-            if (comptime info.Union.tag_type) |TagType| {
-                const active_tag = try deserialise_msg(TagType, msg);
-                inline for (info.Union.fields) |field_info| {
-                    if (@field(TagType, field_info.name) == active_tag) {
-                        const name = field_info.name;
-                        const FieldType = field_info.field_type;
-                        warn("deserialize type: {}\n", .{FieldType});
-                        t = @unionInit(T, name, try deserialise_msg(FieldType, msg));
-                    }
-                }
-            } else { // c struct or general struct
-                const bytes_mem = std.mem.asBytes(&t);
-                const msg_slice = msg_to_slice(msg);
-                if (bytes_mem.len > msg_slice.len)
-                    return error.FailedToDeserialize;
-                std.mem.copy(u8, std.mem.asBytes(&t), msg_to_slice(msg));
-                try nng_ret(c.nng_msg_trim(msg, @sizeOf(T)));
-            }
-        },
-        .Enum => {
-            t = blk: {
-                var int_operand: u32 = 0;
-                nng_ret(c.nng_msg_trim_u32(msg, &int_operand)) catch {
-                    warn("Failed to read operand\n", .{});
-                    return error.DeserialisationFail;
-                };
-                break :blk @intToEnum(T, @intCast(@TagType(T), int_operand));
-            };
-        },
-        else => @compileError("Cannot deserialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
-    }
-    return t;
-}
-
-fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
-    const T = comptime @TypeOf(t);
-
-    const info = @typeInfo(T);
-    switch (info) {
-        .Struct => {
-            inline for (info.Struct.fields) |*field_info| {
-                const name = field_info.name;
-                const FieldType = field_info.field_type;
-                try serialise_msg(@field(t, name), msg);
-            }
-        },
-        .Array => {
-            const len = info.Array.len;
-            var tmp = t;
-            try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(meta.Child(T)) * len));
-        },
-        .Pointer => {
-            if (comptime std.meta.trait.isSlice(info)) {
-                try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * t.len));
-            } else {
-                @compileError("Expected to serialise slice");
-            }
-        },
-        .Union => {
-            if (info.Union.tag_type) |TagType| {
-                const active_tag = meta.activeTag(t);
-                try serialise_msg(@as(@TagType(T), active_tag), msg);
-
-                inline for (info.Union.fields) |field_info| {
-                    if (@field(TagType, field_info.name) == active_tag) {
-                        const name = field_info.name;
-                        const FieldType = field_info.field_type;
-                        try serialise_msg(@field(t, name), msg);
-                    }
-                }
-            } else {
-                const bytes_mem = std.mem.asBytes(&t);
-                var tmp = t;
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(T)));
-            }
-        },
-        .Enum => {
-            try nng_ret(c.nng_msg_append_u32(msg, @intCast(u32, @enumToInt(t))));
-        },
-        else => @compileError("Cannot serialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
-    }
 }
 
 const Job = union(enum) {
@@ -569,7 +430,7 @@ fn in_my_range(id: ID) bool {
 
 fn calculate_hash(data: []const u8) ID {
     var result: ID = undefined;
-    crypto.hash.Blake3.hash(data, result[0..], .{});
+    std.crypto.hash.Blake3.hash(data, result[0..], .{});
     return result;
 }
 
