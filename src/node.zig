@@ -46,6 +46,9 @@ var known_addresses = std.ArrayList([:0]u8).init(allocator);
 var self_addresses = std.StringHashMap(bool).init(allocator);
 
 // Our routing table
+// Key's will be finger table base
+// Values will be actual peers
+// Will be periodically updated and queried to make actual connection
 const PeerInfo = struct {
     id: ID,
     address: [:0]u8,
@@ -539,6 +542,14 @@ fn event_queue_threadfunc(context: void) void {
     }
 }
 
+fn get_finger_id(id: ID, bit: usize) ID {
+    const byte_id: usize = bit / 8;
+    const bit_id: u3 = @intCast(u3, 7 - bit % 8);
+    var new_id = id;
+    new_id[byte_id] = id[byte_id] ^ (@as(u8, 1) << bit_id);
+    return new_id;
+}
+
 fn xor(id1: ID, id2: ID) ID {
     var result: ID = id1;
     for (result) |r, i| {
@@ -575,8 +586,11 @@ fn init() !void {
 
     warn("Init\n", .{});
     my_id = rand_id();
+
     warn("My ID: {x}\n", .{my_id});
-    std.mem.set(u8, nearest_ID[0..], 0);
+
+    var other_id = get_finger_id(my_id, 0);
+    warn("other id: {x}\n", .{other_id});
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
     timer_thread = try Thread.spawn({}, timer_threadfunc);
@@ -630,7 +644,6 @@ fn ceil_log2(n: usize) usize {
 }
 
 //thread to periodically queue work
-
 fn timer_threadfunc(context: void) !void {
     warn("Timer thread\n", .{});
     while (true) {
