@@ -396,6 +396,8 @@ fn timer_threadfunc(context: void) !void {
     while (true) {
         c.nng_msleep(10000);
         try enqueue(Job{ .manage_connections = {} });
+        c.nng_msleep(10000);
+        warn("info, connections:{}\n", .{connections.items});
     }
 }
 
