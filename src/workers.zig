@@ -38,7 +38,7 @@ pub const InWork = struct {
     pub fn send(w: *InWork, msg: *c.nng_msg) void {
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
-        w.state = .Wait;
+        w.state = .Init;
     }
 
     pub fn alloc(sock: c.nng_socket) !*InWork {
@@ -82,6 +82,7 @@ pub const OutWork = struct {
     }
 
     pub fn send(w: *OutWork, msg: *c.nng_msg) void {
+        warn("sending out\n", .{});
         w.state = .Send;
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
@@ -145,18 +146,22 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 }
 
 fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
-    warn("outwork callback\n", .{});
-
     const work = OutWork.fromOpaque(arg);
+    warn("outwork callback {}\n", .{work});
     switch (work.state) {
         .Ready => {},
         .Send => {
+            warn("out callback, calling recv\n", .{});
+
             c.nng_ctx_recv(work.ctx, work.aio);
             work.state = .Wait;
         },
 
         .Wait => {
-            nng_ret(c.nng_aio_result(work.aio)) catch unreachable;
+            nng_ret(c.nng_aio_result(work.aio)) catch {
+                warn("error\n", .{});
+                return;
+            };
 
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;

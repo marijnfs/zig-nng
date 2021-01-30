@@ -13,6 +13,7 @@ const utils = @import("utils.zig");
 pub const Response = union(enum) {
     ping_id: struct { id: ID, sockaddr: c.nng_sockaddr },
     peer_before: ID,
+    broadcast_confirm: void,
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {
@@ -32,5 +33,8 @@ pub fn handle_response(guid: u64, response: Response) !void {
             conn.id = response.ping_id.id;
         },
         .peer_before => {},
+        .broadcast_confirm => {
+            warn("got broadcast confirm\n", .{});
+        },
     }
 }

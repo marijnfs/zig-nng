@@ -12,12 +12,20 @@ const allocator = defines.allocator;
 
 const warn = @import("std").debug.warn;
 
+const State = enum {
+    Init,
+    Connected,
+    Disconnected,
+};
+
 guid: Guid,
 address: [:0]const u8,
 
 id: ID = undefined,
 n_workers: usize = 0,
 socket: c.nng_socket = undefined,
+
+state: State = .Init,
 
 pub fn id_known() bool {
     for (id) |d| {

@@ -3,6 +3,7 @@ const warn = std.debug.warn;
 const mem = std.mem;
 const c = @import("c.zig").c;
 const nng_ret = @import("c.zig").nng_ret;
+const allocator = @import("defines.zig").allocator;
 
 fn msg_to_ptr(comptime T: type, msg: *c.nng_msg) !*T {
     const len = c.nng_msg_len(msg);
@@ -22,6 +23,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
     const info = @typeInfo(T);
 
     switch (info) {
+        .Void => {},
         .Struct => {
             inline for (info.Struct.fields) |*field_info| {
                 const name = field_info.name;
@@ -48,10 +50,17 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
             ));
         },
         .Pointer => {
-            if (comptime std.meta.trait.isSlice(info)) {
-                // var len: u64 = 0;
-                // try nng_ret(c.nng_msg_trim_u64(msg, @intCast(u64, &len)));
-                // try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(meta.Child(T)) * len));
+            if (comptime std.meta.trait.isSlice(T)) {
+                var len: u64 = 0;
+                try nng_ret(c.nng_msg_trim_u64(msg, &len));
+                const data_slice = msg_to_slice(msg);
+                const C = comptime std.meta.Child(T);
+
+                if (len * @sizeOf(C) > data_slice.len)
+                    return error.FailedToDeserialize;
+
+                t = try allocator.alloc(C, len);
+                std.mem.copy(C, t, data_slice);
             } else {
                 @compileError("Expected to serialise slice");
             }
@@ -96,6 +105,7 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
 
     const info = @typeInfo(T);
     switch (info) {
+        .Void => {},
         .Struct => {
             inline for (info.Struct.fields) |*field_info| {
                 const name = field_info.name;
@@ -109,9 +119,10 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
             try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(std.meta.Child(T)) * len));
         },
         .Pointer => {
-            if (comptime std.meta.trait.isSlice(info)) {
-                try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, info.len)));
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &t), @sizeOf(std.meta.Child(T)) * t.len));
+            if (comptime std.meta.trait.isSlice(T)) {
+                const C = std.meta.Child(T);
+                try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, t.len)));
+                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, t), @sizeOf(C) * t.len));
             } else {
                 @compileError("Expected to serialise slice");
             }

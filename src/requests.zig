@@ -15,6 +15,7 @@ const Job = node.Job;
 pub const Request = union(enum) {
     ping_id: ID,
     peer_before: ID,
+    broadcast: node.Message,
 };
 
 pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
@@ -34,5 +35,19 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .ping_id = .{ .id = node.my_id, .sockaddr = sockaddr } } } });
         },
         .peer_before => {},
+        .broadcast => {
+            const message = request.broadcast;
+            if (node.guid_seen.get(guid)) |seen| {
+                warn("already saw message, not broadcasting\n", .{});
+                return;
+            } else {
+                try node.guid_seen.put(guid, true);
+            }
+            try node.enqueue(Job{ .print_msg = .{ .content = message.content } });
+            try node.enqueue(Job{ .send_response = .{ .guid = guid, .response = .{ .broadcast_confirm = {} } } });
+            try node.enqueue(Job{ .broadcast_msg = .{ .content = message.content } });
+
+            warn("responding to guid {}\n", .{guid});
+        },
     }
 }

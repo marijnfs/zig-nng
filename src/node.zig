@@ -48,6 +48,8 @@ pub var known_addresses = std.ArrayList([:0]u8).init(allocator);
 // Addresses to self
 pub var self_addresses = std.StringHashMap(bool).init(allocator);
 
+pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator);
+
 // Our routing table
 // Key's will be finger table base
 // Values will be actual peers
@@ -97,13 +99,18 @@ const RequestEnvelope = struct {
 };
 
 const ResponseEnvelope = struct {
-    id: ID = undefined, //recipient
     guid: Guid = 0, //internal processing id
+    id: ID = undefined, //recipient
     response: Response,
 };
 
 const HandleStdinLine = struct {
     buffer: []u8,
+};
+
+pub const Message = struct {
+    id: ID = undefined, //recipient
+    content: []u8 = undefined,
 };
 
 pub fn connection_by_guid(guid: Guid) !*Connection {
@@ -166,8 +173,22 @@ pub const Job = union(enum) {
     manage_connections: void,
     refresh_routing_table: void,
 
+    print_msg: Message,
+    broadcast_msg: Message,
+
     fn work(self: *Job) !void {
         switch (self.*) {
+            .print_msg => {
+                warn("Msg: {s}\n", .{self.print_msg.content});
+            },
+            .broadcast_msg => {
+                const content = self.broadcast_msg.content;
+                for (connections.items) |conn| {
+                    if (conn.state != .Disconnected) {
+                        try enqueue(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .broadcast = .{ .content = content } } } });
+                    }
+                }
+            },
             .send_request => {
                 const guid = self.send_request.guid;
                 var conn = connection_by_guid(guid);
@@ -182,7 +203,7 @@ pub const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                warn("n outgoing: {}\n", .{outgoing_workers.items.len});
+                warn("n outgoing: {}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
                     if (out_worker.accepting() and out_worker.guid == guid) {
                         warn("selected out_worker {}\n", .{out_worker});
@@ -198,11 +219,8 @@ pub const Job = union(enum) {
                 try enqueue(self.*);
             },
             .send_response => {
-                warn("response\n", .{});
-
                 const guid = self.send_response.guid;
                 const response = self.send_response.response;
-                warn("serialise and send {}\n", .{response});
                 var response_msg: ?*c.nng_msg = undefined;
                 try nng_ret(c.nng_msg_alloc(&response_msg, 0));
 
@@ -211,10 +229,10 @@ pub const Job = union(enum) {
 
                 try serialise_msg(response, response_msg.?);
 
-                warn("guid {}, msg: {}\n", .{ guid, response_msg });
+                warn("Sending response, guid {}, msg: {}\n", .{ guid, response_msg });
                 for (incoming_workers) |w| {
                     if (w.guid == guid and w.state == .Wait) {
-                        warn("responding \n", .{});
+                        warn("Found matching worker, sending response: {}\n", .{w});
                         w.send(response_msg.?);
                         break;
                     }
@@ -283,12 +301,17 @@ pub const Job = union(enum) {
             },
             .handle_stdin_line => {
                 const buf = self.handle_stdin_line.buffer;
-                const space = std.mem.lastIndexOf(u8, buf, " ");
+                const space = std.mem.indexOf(u8, buf, " ");
                 if (space) |idx| {
                     const key = buf[0..idx];
                     const hash = calculate_hash(key);
                     const value = buf[idx + 1 ..];
-                    try enqueue(Job{ .store = .{ .key = hash, .value = value, .guid = 0 } });
+                    if (std.mem.eql(u8, key, "store")) {
+                        try enqueue(Job{ .store = .{ .key = hash, .value = value } });
+                    } else {
+                        try enqueue(Job{ .print_msg = .{ .content = value } });
+                        try enqueue(Job{ .broadcast_msg = .{ .content = value } });
+                    }
                 } else {
                     const key = buf;
                     const hash = calculate_hash(key);
