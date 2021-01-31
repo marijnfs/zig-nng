@@ -4,7 +4,7 @@ pub const N_OUTGOING_WORKERS = 4;
 // We are currently going for 64kb blocks
 pub const BIT_PER_BLOCK = 16;
 pub const BLOCK_SIZE = 1 << BIT_PER_BLOCK;
-pub const ROUTING_TABLE_SIZE = 16;
+pub const ROUTING_TABLE_SIZE = 4;
 
 pub const Block = []u8;
 pub const Guid = u64;

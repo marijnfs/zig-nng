@@ -24,7 +24,7 @@ const OutWork = workers.OutWork;
 
 // Guid that will be used to signify self-id
 pub var my_id: ID = std.mem.zeroes(ID);
-pub var my_address: [:0]u8 = undefined;
+pub var my_address: ?[:0]u8 = undefined;
 var nearest_ID: ID = std.mem.zeroes(ID);
 var closest_distance: ID = std.mem.zeroes(ID);
 
@@ -56,7 +56,7 @@ pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter 
 // Will be periodically updated and queried to make actual connection
 const PeerInfo = struct {
     id: ID,
-    address: [:0]u8,
+    address: ?[:0]u8 = undefined,
 };
 var routing_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
@@ -360,7 +360,18 @@ pub const Job = union(enum) {
                     });
                 }
             },
-            .refresh_routing_table => {},
+            .refresh_routing_table => {
+                var it = routing_table.iterator();
+                while (it.next()) |kv| {
+                    const find_id = kv.key;
+                    const connection = connection_by_nearest_id(find_id) catch {
+                        continue;
+                    };
+                    const guid = defines.get_guid();
+                    try self_guids.put(guid, true);
+                    try enqueue(Job{ .send_request = .{ .conn_guid = connection.guid, .guid = guid, .enveloped = .{ .nearest_peer = find_id } } });
+                }
+            },
         }
     }
 };
@@ -423,8 +434,13 @@ fn init() !void {
 
     warn("My ID: {x}\n", .{my_id});
 
-    var other_id = get_finger_id(my_id, 0);
-    warn("other id: {x}\n", .{other_id});
+    warn("Filling routing table\n", .{});
+    var i: usize = 0;
+    while (i < defines.ROUTING_TABLE_SIZE) : (i += 1) {
+        var other_id = get_finger_id(my_id, i);
+        try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID) });
+        warn("Finger table {}: {x}\n", .{ i, other_id });
+    }
 
     event_thread = try Thread.spawn({}, event_queue_threadfunc);
     timer_thread = try Thread.spawn({}, timer_threadfunc);

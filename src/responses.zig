@@ -17,6 +17,7 @@ pub const Response = union(enum) {
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {
+    warn("Response: {}\n", .{response});
     var for_me: bool = node.self_guids.get(guid) != null;
 
     if (for_me) {
