@@ -323,7 +323,6 @@ pub const Job = union(enum) {
             .handle_response => {
                 const guid = self.handle_response.guid;
                 const response = self.handle_response.enveloped;
-                warn("got: {}\n", .{self.handle_response});
                 try handle_response(guid, response);
             },
             .handle_stdin_line => {
@@ -379,7 +378,7 @@ fn event_queue_threadfunc(context: void) void {
             };
         } else {
             // warn("sleeping\n", .{});
-            c.nng_msleep(100);
+            c.nng_msleep(10);
         }
     }
 }

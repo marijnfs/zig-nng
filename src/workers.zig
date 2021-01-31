@@ -168,6 +168,7 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
         .Wait => {
             nng_ret(c.nng_aio_result(work.aio)) catch {
                 warn("error\n", .{});
+                work.state = .Ready;
                 return;
             };
 
@@ -176,6 +177,8 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
                 warn("couldn't trim guid\n", .{});
+                work.state = .Ready;
+                return;
             };
             warn("read response guid: {}\n", .{guid});
             const response = deserialise_msg(Response, msg.?) catch unreachable;

@@ -100,7 +100,6 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
             const msg_slice = msg_to_slice(msg);
             if (bytes_mem.len > msg_slice.len)
                 return error.FailedToDeserialize;
-            warn("membytes: {} msg_slice:{}\n", .{ bytes_mem.len, msg_slice });
             mem.copy(u8, bytes_mem, msg_slice[0..bytes_mem.len]);
             try nng_ret(c.nng_msg_trim(msg, bytes_mem.len));
         },

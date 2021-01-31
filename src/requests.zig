@@ -60,6 +60,8 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
         },
         .broadcast => {
             const message = request.broadcast;
+            try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = {} } } });
+
             if (node.guid_seen.get(guid)) |seen| {
                 warn("already saw message, not broadcasting\n", .{});
                 return;
@@ -67,7 +69,6 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
                 try node.guid_seen.put(guid, true);
             }
             try node.enqueue(Job{ .print_msg = .{ .content = message.content } });
-            try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = {} } } });
             try node.enqueue(Job{ .broadcast_msg = .{ .guid = guid, .enveloped = message } });
 
             warn("responding to guid {}\n", .{guid});
