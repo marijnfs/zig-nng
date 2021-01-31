@@ -81,8 +81,8 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                 const msg_slice = msg_to_slice(msg);
                 if (bytes_mem.len > msg_slice.len)
                     return error.FailedToDeserialize;
-                mem.copy(u8, mem.asBytes(&t), msg_to_slice(msg));
-                try nng_ret(c.nng_msg_trim(msg, @sizeOf(T)));
+                mem.copy(u8, bytes_mem, msg_slice[0..bytes_mem.len]);
+                try nng_ret(c.nng_msg_trim(msg, bytes_mem.len));
             }
         },
         .Enum => {
@@ -94,6 +94,15 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                 };
                 break :blk @intToEnum(T, @intCast(@TagType(T), int_operand));
             };
+        },
+        .Int => {
+            const bytes_mem = mem.asBytes(&t);
+            const msg_slice = msg_to_slice(msg);
+            if (bytes_mem.len > msg_slice.len)
+                return error.FailedToDeserialize;
+            warn("membytes: {} msg_slice:{}\n", .{ bytes_mem.len, msg_slice });
+            mem.copy(u8, bytes_mem, msg_slice[0..bytes_mem.len]);
+            try nng_ret(c.nng_msg_trim(msg, bytes_mem.len));
         },
         else => @compileError("Cannot deserialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
     }
@@ -147,6 +156,11 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
         },
         .Enum => {
             try nng_ret(c.nng_msg_append_u32(msg, @intCast(u32, @enumToInt(t))));
+        },
+        .Int => {
+            const bytes_mem = mem.asBytes(&t);
+            var tmp = t;
+            try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(T)));
         },
         else => @compileError("Cannot serialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
     }

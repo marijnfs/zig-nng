@@ -61,7 +61,7 @@ const PeerInfo = struct {
 var routing_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
 // Our connections
-var connections = std.ArrayList(*Connection).init(allocator);
+pub var connections = std.ArrayList(*Connection).init(allocator);
 
 var incoming_workers: [defines.N_INCOMING_WORKERS]*InWork = undefined;
 var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
@@ -81,7 +81,7 @@ const handle_response = responses.handle_response;
 const GuidKeyValue = struct {
     guid: u64 = 0, //source of request
     key: ID,
-    value: []u8 = undefined,
+    value: ?[]u8 = undefined,
 };
 
 const Bootstrap = struct {
@@ -92,17 +92,28 @@ const Connect = struct {
     address: [:0]const u8,
 };
 
-const RequestEnvelope = struct {
-    id: ID = undefined, //recipient
-    guid: Guid = 0, //internal processing id
-    request: Request, msg: *c.nng_msg = undefined
-};
+fn Envelope(comptime T: type) type {
+    return struct {
+        enveloped: T,
+        conn_guid: Guid = 0, //Guid for interal addressing of output connection
+        guid: Guid = 0, //request processing id
+        msg: *c.nng_msg = undefined,
+    };
+}
 
-const ResponseEnvelope = struct {
-    guid: Guid = 0, //internal processing id
-    id: ID = undefined, //recipient
-    response: Response,
-};
+const RequestEnvelope = Envelope(Request);
+// const RequestEnvelope = struct {
+//     conn_guid: Guid, //Guid for interal addressing of output connection
+//     guid: Guid = 0, //request processing id
+//     request: Request, msg: *c.nng_msg = undefined
+// };
+
+const ResponseEnvelope = Envelope(Response);
+// struct {
+//     guid: Guid = 0, //internal processing id
+//     id: ID = undefined, //recipient
+//     response: Response,
+// };
 
 const HandleStdinLine = struct {
     buffer: []u8,
@@ -115,6 +126,7 @@ pub const Message = struct {
 
 pub fn connection_by_guid(guid: Guid) !*Connection {
     for (connections.items) |conn| {
+        warn("Looking {} {}\n", .{ conn.guid, guid });
         if (conn.guid == guid) {
             return conn;
         }
@@ -123,16 +135,27 @@ pub fn connection_by_guid(guid: Guid) !*Connection {
 }
 
 pub fn connection_by_nearest_id(id: ID) !*Connection {
-    var nearest: ID = std.mem.zeroes(ID);
+    if (connections.items.len == 0)
+        return error.NotFound;
+
+    var first = true;
     var nearest_conn: *Connection = undefined;
+    var nearest_dist = std.mem.zeroes(ID);
 
     for (connections.items) |conn| {
-        if (conn.state != .Unconnected and less(conn.ID, id)) {
-            return conn;
+        if (conn.state != .Disconnected and conn.id_known()) {
+            const dist = xor(conn.id, id);
+            if (first or less(dist, nearest_dist)) {
+                nearest_dist = dist;
+                nearest_conn = conn;
+                first = false;
+            }
         }
     }
 
-    return error.NotFound;
+    if (first)
+        return error.NotFound;
+    return nearest_conn;
 }
 
 // Rudimentary console
@@ -174,26 +197,29 @@ pub const Job = union(enum) {
     refresh_routing_table: void,
 
     print_msg: Message,
-    broadcast_msg: Message,
+    broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
+        warn("work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
                 warn("Msg: {s}\n", .{self.print_msg.content});
             },
             .broadcast_msg => {
-                const content = self.broadcast_msg.content;
+                const message = self.broadcast_msg.enveloped;
+                const guid = self.broadcast_msg.guid;
                 for (connections.items) |conn| {
-                    if (conn.state != .Disconnected) {
-                        try enqueue(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .broadcast = .{ .content = content } } } });
+                    if (conn.state != .Disconnected and conn.id_known()) {
+                        try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = guid, .enveloped = .{ .broadcast = .{ .content = message.content } } } });
                     }
                 }
             },
             .send_request => {
+                const conn_guid = self.send_request.conn_guid;
                 const guid = self.send_request.guid;
-                var conn = connection_by_guid(guid);
+                var conn = connection_by_guid(conn_guid);
 
-                const request = self.send_request.request;
+                const request = self.send_request.enveloped;
 
                 var request_msg: ?*c.nng_msg = undefined;
                 try nng_ret(c.nng_msg_alloc(&request_msg, 0));
@@ -205,7 +231,7 @@ pub const Job = union(enum) {
 
                 warn("n outgoing: {}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
-                    if (out_worker.accepting() and out_worker.guid == guid) {
+                    if (out_worker.accepting() and out_worker.guid == conn_guid) {
                         warn("selected out_worker {}\n", .{out_worker});
 
                         out_worker.send(request_msg.?);
@@ -220,7 +246,7 @@ pub const Job = union(enum) {
             },
             .send_response => {
                 const guid = self.send_response.guid;
-                const response = self.send_response.response;
+                const response = self.send_response.enveloped;
                 var response_msg: ?*c.nng_msg = undefined;
                 try nng_ret(c.nng_msg_alloc(&response_msg, 0));
 
@@ -246,7 +272,7 @@ pub const Job = union(enum) {
                 const value = self.store.value;
                 if (in_my_range(key)) //store here
                 {
-                    try database.put(key, value);
+                    try database.put(key, value.?);
                 } else {}
             },
             .get => {
@@ -255,7 +281,7 @@ pub const Job = union(enum) {
             .handle_request => {
                 warn("handle request\n", .{});
                 const guid = self.handle_request.guid;
-                const request = self.handle_request.request;
+                const request = self.handle_request.enveloped;
                 const msg = self.handle_request.msg;
 
                 try handle_request(guid, request, msg);
@@ -290,12 +316,13 @@ pub const Job = union(enum) {
                 out_worker.guid = conn.guid;
                 try outgoing_workers.append(out_worker);
 
-                try enqueue(Job{ .send_request = .{ .guid = conn.guid, .request = .{ .ping_id = std.mem.zeroes(ID) } } });
+                const conn_guid = conn.guid;
+                try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = defines.get_guid(), .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
             },
 
             .handle_response => {
                 const guid = self.handle_response.guid;
-                const response = self.handle_response.response;
+                const response = self.handle_response.enveloped;
                 warn("got: {}\n", .{self.handle_response});
                 try handle_response(guid, response);
             },
@@ -310,7 +337,12 @@ pub const Job = union(enum) {
                         try enqueue(Job{ .store = .{ .key = hash, .value = value } });
                     } else {
                         try enqueue(Job{ .print_msg = .{ .content = value } });
-                        try enqueue(Job{ .broadcast_msg = .{ .content = value } });
+                        try enqueue(Job{
+                            .broadcast_msg = .{
+                                .guid = defines.get_guid(),
+                                .enveloped = .{ .content = value },
+                            },
+                        });
                     }
                 } else {
                     const key = buf;
@@ -360,7 +392,7 @@ fn get_finger_id(id: ID, bit: usize) ID {
     return new_id;
 }
 
-fn xor(id1: ID, id2: ID) ID {
+pub fn xor(id1: ID, id2: ID) ID {
     var result: ID = id1;
     for (result) |r, i| {
         result[i] = r ^ id2[i];
@@ -368,22 +400,22 @@ fn xor(id1: ID, id2: ID) ID {
     return result;
 }
 
-fn less(id1: ID, id2: ID) bool {
+pub fn less(id1: ID, id2: ID) bool {
     return std.mem.order(u8, id1[0..], id2[0..]) == .lt;
 }
 
-fn in_my_range(id: ID) bool {
+pub fn in_my_range(id: ID) bool {
     var dist = xor(my_id, id);
     return less(id, closest_distance);
 }
 
-fn calculate_hash(data: []const u8) ID {
+pub fn calculate_hash(data: []const u8) ID {
     var result: ID = undefined;
     std.crypto.hash.Blake3.hash(data, result[0..], .{});
     return result;
 }
 
-fn rand_id() ID {
+pub fn rand_id() ID {
     var id: ID = undefined;
     std.crypto.random.bytes(&id);
     return id;

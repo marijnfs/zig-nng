@@ -11,9 +11,10 @@ const node = @import("node.zig");
 const utils = @import("utils.zig");
 
 pub const Response = union(enum) {
-    ping_id: struct { id: ID, sockaddr: c.nng_sockaddr },
+    ping_id: struct { conn_guid: Guid, id: ID, sockaddr: c.nng_sockaddr },
     peer_before: ID,
     broadcast_confirm: void,
+    nearest_peer: struct { search_id: ID, nearest_id: ID },
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {
@@ -31,10 +32,12 @@ pub fn handle_response(guid: u64, response: Response) !void {
             try node.self_addresses.put(my_addr_string, true);
             var conn = try node.connection_by_guid(guid);
             conn.id = response.ping_id.id;
+            warn("Set to id: {x}\n", .{conn.id});
         },
         .peer_before => {},
         .broadcast_confirm => {
             warn("got broadcast confirm\n", .{});
         },
+        .nearest_peer => {},
     }
 }

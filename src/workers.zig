@@ -126,17 +126,25 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             const msg = c.nng_aio_get_msg(work.aio);
 
             var guid: Guid = 0;
-            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch unreachable;
+            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch |e| {
+                warn("Failed to trim incoming message: {}\n", .{e});
+                work.state = .Init;
+                return;
+            };
 
             // set worker up for response
             work.guid = guid;
-            work.state = InWork.State.Wait;
+            work.state = .Wait;
 
             // We deserialise the message in a request
-            const request = deserialise_msg(Request, msg.?) catch unreachable;
+            const request = deserialise_msg(Request, msg.?) catch |e| {
+                warn("Failed to deserialise incoming request: {}\n", .{e});
+                work.state = .Init;
+                return;
+            };
 
             // We still add the msg, in case we need to query extra information
-            enqueue(Job{ .handle_request = .{ .guid = guid, .request = request, .msg = msg.? } }) catch |e| {
+            enqueue(Job{ .handle_request = .{ .guid = guid, .enveloped = request, .msg = msg.? } }) catch |e| {
                 warn("error: {}\n", .{e});
             };
         },
@@ -171,7 +179,7 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
             };
             warn("read response guid: {}\n", .{guid});
             const response = deserialise_msg(Response, msg.?) catch unreachable;
-            enqueue(Job{ .handle_response = .{ .guid = guid, .response = response } }) catch unreachable;
+            enqueue(Job{ .handle_response = .{ .guid = guid, .enveloped = response, .msg = msg.? } }) catch unreachable;
             work.state = .Ready;
         },
 

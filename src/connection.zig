@@ -27,8 +27,8 @@ socket: c.nng_socket = undefined,
 
 state: State = .Init,
 
-pub fn id_known() bool {
-    for (id) |d| {
+pub fn id_known(self: *Connection) bool {
+    for (self.id) |d| {
         if (d != 0)
             return true;
     }
