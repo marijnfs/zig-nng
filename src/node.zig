@@ -23,9 +23,8 @@ const InWork = workers.InWork;
 const OutWork = workers.OutWork;
 
 // Guid that will be used to signify self-id
-pub var self_guid: Guid = undefined;
-
 pub var my_id: ID = std.mem.zeroes(ID);
+pub var my_address: [:0]u8 = undefined;
 var nearest_ID: ID = std.mem.zeroes(ID);
 var closest_distance: ID = std.mem.zeroes(ID);
 
@@ -48,7 +47,8 @@ pub var known_addresses = std.ArrayList([:0]u8).init(allocator);
 // Addresses to self
 pub var self_addresses = std.StringHashMap(bool).init(allocator);
 
-pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator);
+pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter to not rebroadcast messages
+pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter for self-addressed guids. Used to distinguish between messages to procress / pass on
 
 // Our routing table
 // Key's will be finger table base
@@ -102,18 +102,8 @@ fn Envelope(comptime T: type) type {
 }
 
 const RequestEnvelope = Envelope(Request);
-// const RequestEnvelope = struct {
-//     conn_guid: Guid, //Guid for interal addressing of output connection
-//     guid: Guid = 0, //request processing id
-//     request: Request, msg: *c.nng_msg = undefined
-// };
 
 const ResponseEnvelope = Envelope(Response);
-// struct {
-//     guid: Guid = 0, //internal processing id
-//     id: ID = undefined, //recipient
-//     response: Response,
-// };
 
 const HandleStdinLine = struct {
     buffer: []u8,
@@ -316,8 +306,10 @@ pub const Job = union(enum) {
                 out_worker.guid = conn.guid;
                 try outgoing_workers.append(out_worker);
 
+                const guid = defines.get_guid();
+                try self_guids.put(guid, true); //register that this guid is to be processed by us
                 const conn_guid = conn.guid;
-                try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = defines.get_guid(), .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
+                try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
             },
 
             .handle_response => {
@@ -336,9 +328,11 @@ pub const Job = union(enum) {
                         try enqueue(Job{ .store = .{ .key = hash, .value = value } });
                     } else {
                         try enqueue(Job{ .print_msg = .{ .content = value } });
+                        const guid = defines.get_guid();
+                        try self_guids.put(guid, true);
                         try enqueue(Job{
                             .broadcast_msg = .{
-                                .guid = defines.get_guid(),
+                                .guid = guid,
                                 .enveloped = .{ .content = value },
                             },
                         });
@@ -423,8 +417,6 @@ pub fn rand_id() ID {
 fn init() !void {
     defines.init();
 
-    self_guid = defines.get_guid();
-
     warn("Init\n", .{});
     my_id = rand_id();
 
@@ -451,6 +443,8 @@ fn timer_threadfunc(context: void) !void {
         c.nng_msleep(10000);
         try enqueue(Job{ .manage_connections = {} });
         c.nng_msleep(10000);
+        try enqueue(Job{ .refresh_routing_table = {} });
+
         warn("info, connections:{}\n", .{connections.items});
     }
 }

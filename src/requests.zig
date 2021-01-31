@@ -52,7 +52,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             }
 
             if (im_closest) {
-                try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id } } } });
+                try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address } } } });
             } else {
                 const nearest_conn = try node.connection_by_nearest_id(search_id);
                 try node.enqueue(Job{ .send_request = .{ .conn_guid = nearest_conn.guid, .guid = guid, .enveloped = request } });

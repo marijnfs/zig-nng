@@ -59,8 +59,13 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                 if (len * @sizeOf(C) > data_slice.len)
                     return error.FailedToDeserialize;
 
-                t = try allocator.alloc(C, len);
-                std.mem.copy(C, t, data_slice);
+                if (comptime std.meta.sentinel(T) == null) {
+                    t = try allocator.alloc(C, len);
+                    std.mem.copy(C, t, data_slice);
+                } else {
+                    t = try allocator.allocSentinel(C, len, 0);
+                    std.mem.copy(C, t, data_slice);
+                }
             } else {
                 @compileError("Expected to serialise slice");
             }
