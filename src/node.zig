@@ -193,7 +193,8 @@ pub const Job = union(enum) {
         warn("work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
-                warn("Msg: {s}\n", .{self.print_msg.content});
+                var stdout_file = std.io.getStdOut();
+                try stdout_file.writer().print("Msg: {s}\n", .{self.print_msg.content});
             },
             .broadcast_msg => {
                 const message = self.broadcast_msg.enveloped;
