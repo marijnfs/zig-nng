@@ -512,11 +512,15 @@ pub fn main() !void {
     event_thread.wait();
 }
 
-test "serialise" {
-    var sock_main: c.nng_msg = undefined;
-    try nng_ret(c.nng_rep0_open(&main_socket));
-}
-
 test "connectTest" {
-    var conn_1 = Connection.alloc();
+    var conn_1 = try Connection.alloc();
+    var conn_2 = try Connection.alloc();
+
+    conn_1.init("tcp://172.0.0.1:1234");
+    conn_2.init("tcp://172.0.0.1:1235");
+
+    try conn_1.req_open();
+    try conn_1.dial();
+    try conn_2.rep_open();
+    try conn_2.listen();
 }

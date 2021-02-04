@@ -56,7 +56,7 @@ pub fn req_open(
 pub fn rep_open(self: *Connection) !void {
     warn("rep open {s}\n", .{self.address});
     var r: c_int = undefined;
-    try nng_ret(c.nng_rep0_open(self.sock));
+    try nng_ret(c.nng_rep0_open(&self.socket));
 }
 
 pub fn dial(self: *Connection) !void {
@@ -65,5 +65,5 @@ pub fn dial(self: *Connection) !void {
 }
 
 pub fn listen(self: *Connection) !void {
-    try nng_ret(c.nng_listen(main_socket, address, 0, 0));
+    try nng_ret(c.nng_listen(self.socket, self.address, 0, 0));
 }
