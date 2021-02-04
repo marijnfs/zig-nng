@@ -28,7 +28,7 @@ pub fn build(b: *Builder) void {
     // const nng_lib = getLibrary(b, mode, target);
     // nng_lib.install();
 
-    var main_tests = b.addTest("src/main.zig");
+    var main_tests = b.addTest("src/node.zig");
     main_tests.addIncludeDir("nng/include");
     main_tests.addIncludeDir("src");
     main_tests.linkLibC();

@@ -13,6 +13,7 @@ const Request = @import("requests.zig").Request;
 const Response = @import("responses.zig").Response;
 const enqueue = @import("node.zig").enqueue;
 const Job = @import("node.zig").Job;
+const Connection = @import("connection.zig");
 
 pub const InWork = struct {
     const State = enum {
@@ -66,8 +67,10 @@ pub const OutWork = struct {
     aio: ?*c.nng_aio,
     ctx: c.nng_ctx,
 
-    id: ID, //ID of connected node
+    // id: ID, //ID of connected node
     guid: Guid = 0, //Internal processing id
+
+    connection: *Connection,
 
     pub fn toOpaque(w: *OutWork) *c_void {
         return @ptrCast(*c_void, w);
@@ -88,20 +91,17 @@ pub const OutWork = struct {
         c.nng_ctx_send(w.ctx, w.aio);
     }
 
-    pub fn alloc(sock: c.nng_socket) !*OutWork {
+    pub fn alloc(connection: *Connection) !*OutWork {
         var o = c.nng_alloc(@sizeOf(OutWork));
         if (o == null) {
             try nng_ret(2); // c.NNG_ENOMEM
         }
 
         var w = OutWork.fromOpaque(o);
-
+        w.connection = connection;
         try nng_ret(c.nng_aio_alloc(&w.aio, outWorkCallback, w));
 
-        try nng_ret(c.nng_ctx_open(&w.ctx, sock));
-
-        //set initial id to 0, will be filled in by request
-        std.mem.set(u8, w.id[0..], 0);
+        try nng_ret(c.nng_ctx_open(&w.ctx, connection.socket));
         w.state = State.Ready;
 
         return w;

@@ -4,6 +4,18 @@
 		"selected_items":
 		[
 			[
+				"even",
+				"event_queue"
+			],
+			[
+				"nng_msg_append",
+				"nng_msg_append_u64"
+			],
+			[
+				"nng_msg_ap",
+				"nng_msg_append_u64"
+			],
+			[
 				"I",
 				"INS\tTag"
 			],
@@ -95,7 +107,99 @@
 			"file": "src/node.zig",
 			"settings":
 			{
-				"buffer_size": 12777,
+				"buffer_size": 16712,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "src/serialise.zig",
+			"settings":
+			{
+				"buffer_size": 7019,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "src/connection.zig",
+			"settings":
+			{
+				"buffer_size": 1487,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "src/requests.zig",
+			"settings":
+			{
+				"buffer_size": 3886,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "src/responses.zig",
+			"settings":
+			{
+				"buffer_size": 1807,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "nng/include/nng/nng.h",
+			"settings":
+			{
+				"buffer_size": 60941,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "nng/src/core/protocol.h",
+			"settings":
+			{
+				"buffer_size": 8622,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "nng/include/nng/protocol/survey0/survey.h",
+			"settings":
+			{
+				"buffer_size": 1057,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "/usr/local/lib/std/fmt.zig",
+			"settings":
+			{
+				"buffer_size": 78386,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "/usr/local/lib/std/debug.zig",
+			"settings":
+			{
+				"buffer_size": 75059,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "doc/readme.md",
+			"settings":
+			{
+				"buffer_size": 1409,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "doc/design.md",
+			"settings":
+			{
+				"buffer_size": 4604,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -104,8 +208,7 @@
 			"file": "src/server.zig",
 			"settings":
 			{
-				"buffer_size": 3918,
-				"encoding": "UTF-8",
+				"buffer_size": 2598,
 				"line_ending": "Unix"
 			}
 		},
@@ -166,6 +269,14 @@
 		"last_filter": "",
 		"selected_items":
 		[
+			[
+				"insta",
+				"Package Control: Install Package"
+			],
+			[
+				"fold",
+				"Code Folding: Fold Tag Attributes"
+			],
 			[
 				"i",
 				"File: New View into File"
@@ -263,10 +374,6 @@
 				"Git: Blame"
 			],
 			[
-				"insta",
-				"Package Control: Install Package"
-			],
-			[
 				"clag",
 				"Clang Format: Format Selection"
 			],
@@ -322,10 +429,16 @@
 		"/home/marijnfs/dev/zig-nng",
 		"/home/marijnfs/dev/zig-nng/nng",
 		"/home/marijnfs/dev/zig-nng/nng/include",
-		"/home/marijnfs/dev/zig-nng/nng/include/nng"
+		"/home/marijnfs/dev/zig-nng/nng/include/nng",
+		"/home/marijnfs/dev/zig-nng/nng/include/nng/protocol",
+		"/home/marijnfs/dev/zig-nng/nng/include/nng/protocol/pubsub0",
+		"/home/marijnfs/dev/zig-nng/nng/include/nng/protocol/survey0",
+		"/home/marijnfs/dev/zig-nng/src"
 	],
 	"file_history":
 	[
+		"/home/marijnfs/dev/zig-nng/nng/include/nng/nng.h",
+		"/home/marijnfs/dev/zig-nng/src/client.zig",
 		"/home/marijnfs/dev/zig-nng/src/server.zig",
 		"/home/marijnfs/dev/detr/models/detr.py",
 		"/home/marijnfs/dev/detr/board-small.JPG",
@@ -451,9 +564,7 @@
 		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionLabels/lib/core/Utils.cpp",
 		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/ML/Operations.h",
 		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/ImFusionLib/Include/ImFusion/Base/SharedImageSet.h",
-		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexeTrainingAlgorithm.cpp",
-		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexePlugin.cpp",
-		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/ImFusionSuite/Core/include/ImFusion/Core/Utils/Optional.h"
+		"/media/marijnfs/2ef9d006-95f3-466b-98bb-f373d6bac52a/workdev/plugins/DexePlugin/DexeTrainingAlgorithm.cpp"
 	],
 	"find":
 	{
@@ -471,9 +582,134 @@
 		"case_sensitive": false,
 		"find_history":
 		[
-			"serve",
-			"nni_platform_init",
-			"random"
+			"my_id",
+			"less(",
+			"neares",
+			"req",
+			"RequesEnvelope",
+			"Data",
+			"RequestData",
+			"responseda",
+			"ping_id",
+			"peer_id",
+			"ID",
+			"ping_id",
+			"deseriali",
+			"request = str",
+			"request",
+			"job:",
+			"manage_connections",
+			"enqueue",
+			"connect",
+			".connect",
+			"Job{",
+			"Job",
+			"manage",
+			"rand",
+			"manage_connections",
+			"threa",
+			"connection_by_guid",
+			"sockaddr_to_string",
+			"listen",
+			"dail",
+			"nng_append",
+			"nng_ret",
+			"sockaddr_to_string",
+			"tcp:/",
+			"addres",
+			"enqueue",
+			"event_queue.push",
+			"event_queue",
+			"event_queue.push",
+			"seri",
+			"deseri",
+			"deserialise_msg",
+			"read guid",
+			"READ GU",
+			"nng_msg",
+			"deserialise_msg",
+			"body",
+			"serialise_msg",
+			"nng_msg_trim",
+			"trim",
+			"nng_trim",
+			"deserial",
+			"deserialise_m",
+			"deserial",
+			"seria",
+			"my_id",
+			"handle_request",
+			"requestdata",
+			"struct",
+			"response",
+			"send(",
+			"send",
+			"ptrCast",
+			"@ptrCast",
+			"deserialise_msg",
+			"RequestData",
+			"handle_request",
+			"serialise_msg",
+			"serial",
+			"nng_sockadd",
+			"@ptrCast",
+			"nng_msg_append_u32",
+			"serialise_msg",
+			"switch (",
+			"witch(",
+			"send(",
+			"handle_request",
+			"handle_requ",
+			"handle_response",
+			"handle_operand",
+			"connection",
+			"less",
+			"connection",
+			"routing_table",
+			"handle_response",
+			"handle_operand",
+			"HandleRequest",
+			"handle_request",
+			"handle_operand",
+			"fn allo",
+			"nng_msg_append",
+			"fatal(",
+			"c_int",
+			"store",
+			".Get",
+			"get",
+			".store",
+			"store ",
+			"hash(",
+			"line",
+			"s_family",
+			"body_slice",
+			"append",
+			"size",
+			"nng_msg_append",
+			"addr",
+			"ping",
+			"nng_sockaddr",
+			"sockToString",
+			"nng_sockaddr",
+			"addr",
+			"handle_respo",
+			"Connection",
+			"n_workers",
+			"n_work",
+			"mem.copy",
+			"handle_respo",
+			"my id",
+			"connection_by",
+			"by_guid",
+			"ptrcast",
+			"ptrcas",
+			"reply = ",
+			"reply",
+			"handle_respo",
+			"guid = ",
+			"handle_request",
+			"nng_msg_"
 		],
 		"highlight": true,
 		"in_selection": false,
@@ -500,7 +736,7 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 12777,
+						"buffer_size": 16712,
 						"regions":
 						{
 						},
@@ -518,7 +754,7 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 5168.0,
+						"translation.y": 855.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 1,
@@ -526,19 +762,19 @@
 				},
 				{
 					"buffer": 1,
-					"file": "src/server.zig",
+					"file": "src/serialise.zig",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 3918,
+						"buffer_size": 7019,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								1399,
-								1399
+								0,
+								0
 							]
 						],
 						"settings":
@@ -548,7 +784,7 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 1104.0,
+						"translation.y": 2458.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 0,
@@ -556,6 +792,330 @@
 				},
 				{
 					"buffer": 2,
+					"file": "src/connection.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1487,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 35.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 4,
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "src/requests.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 3886,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 385.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 2,
+					"type": "text"
+				},
+				{
+					"buffer": 4,
+					"file": "src/responses.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1807,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 152.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 3,
+					"type": "text"
+				},
+				{
+					"buffer": 5,
+					"file": "nng/include/nng/nng.h",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 60941,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								37812,
+								37815
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 17875.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 7,
+					"type": "text"
+				},
+				{
+					"buffer": 6,
+					"file": "nng/src/core/protocol.h",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 8622,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 4144.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 6,
+					"type": "text"
+				},
+				{
+					"buffer": 7,
+					"file": "nng/include/nng/protocol/survey0/survey.h",
+					"semi_transient": true,
+					"settings":
+					{
+						"buffer_size": 1057,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax"
+						},
+						"translation.x": 0.0,
+						"translation.y": 321.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 5,
+					"type": "text"
+				},
+				{
+					"buffer": 8,
+					"file": "/usr/local/lib/std/fmt.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 78386,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								52030,
+								52030
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 33469.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 8,
+					"type": "text"
+				},
+				{
+					"buffer": 9,
+					"file": "/usr/local/lib/std/debug.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 75059,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1839,
+								1839
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 1279.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 11,
+					"type": "text"
+				},
+				{
+					"buffer": 10,
+					"file": "doc/readme.md",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1409,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Markdown/Markdown.sublime-syntax"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 10,
+					"type": "text"
+				},
+				{
+					"buffer": 11,
+					"file": "doc/design.md",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 4604,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								447,
+								447
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Markdown/Markdown.sublime-syntax",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 9,
+					"type": "text"
+				},
+				{
+					"buffer": 12,
+					"file": "src/server.zig",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 2598,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Zig Language/Syntaxes/Zig.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 2577.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 12,
+					"type": "text"
+				},
+				{
+					"buffer": 13,
 					"file": "build.zig",
 					"semi_transient": false,
 					"settings":
@@ -581,7 +1141,7 @@
 						"translation.y": 163.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 2,
+					"stack_index": 13,
 					"type": "text"
 				}
 			]
@@ -640,16 +1200,64 @@
 		"selected_items":
 		[
 			[
+				"node",
+				"src/node.zig"
+			],
+			[
+				"",
+				"src/requests.zig"
+			],
+			[
+				"respon",
+				"src/responses.zig"
+			],
+			[
+				"conne",
+				"src/connection.zig"
+			],
+			[
+				"requ",
+				"src/requests.zig"
+			],
+			[
+				"proto",
+				"nng/src/core/protocol.h"
+			],
+			[
+				"nng.h",
+				"nng/include/nng/nng.h"
+			],
+			[
+				"nng",
+				"nng/include/nng/nng.h"
+			],
+			[
+				"nng.",
+				"nng/include/nng/nng.h"
+			],
+			[
+				"nod",
+				"src/node.zig"
+			],
+			[
+				"read",
+				"doc/readme.md"
+			],
+			[
+				"serv",
+				"src/server.zig"
+			],
+			[
+				"clien",
+				"src/client.zig"
+			],
+			[
 				"detr",
 				"models/detr.py"
 			],
 			[
 				"match",
 				"models/matcher.py"
-			],
-			[
-				"",
-				"nng/src/platform/posix/posix_file.c"
 			],
 			[
 				"nngim",
@@ -1102,54 +1710,6 @@
 			[
 				"torchba",
 				"TorchPlugin/TorchTrainerBase.cpp"
-			],
-			[
-				"roi",
-				"ImFusionSuite/ImFusionLib/Source/ML/ImageROISamplers.cpp"
-			],
-			[
-				"imagesampl",
-				"ImFusionSuite/ImFusionLib/Source/Base/ImageSampling.cpp"
-			],
-			[
-				"selectionwi",
-				"ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/SelectionWidget.h"
-			],
-			[
-				"mainwinba",
-				"ImFusionSuite/ImFusionLib/Include/ImFusion/GUI/MainWindowBase.h"
-			],
-			[
-				"datamod",
-				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/DataModel.h"
-			],
-			[
-				"spineconcp",
-				"SpinePlugin/SpineBaseController.cpp"
-			],
-			[
-				"trainercon",
-				"TrainerPlugin/TrainerController.cpp"
-			],
-			[
-				"memima",
-				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/MemImage.h"
-			],
-			[
-				"typ",
-				"ImFusionSuite/ImFusionLib/Include/ImFusion/Base/TypedImage.h"
-			],
-			[
-				"typedima",
-				"ImFusionSuite/ImFusionLib/Source/Base/TypedImage.cpp"
-			],
-			[
-				"torchtrainba",
-				"TorchPlugin/TorchTrainerBase.h"
-			],
-			[
-				"torchimarre",
-				"TorchPlugin/TorchImagePredictor.cpp"
 			]
 		],
 		"width": 0.0

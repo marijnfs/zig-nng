@@ -39,6 +39,12 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             const search_id = request.nearest_peer;
             var nearest_distance = node.xor(node.my_id, search_id);
             var nearest_id = node.my_id;
+            if (node.is_zero(node.my_id)) {
+                warn("My address is not known yet\n", .{});
+                try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } } } });
+                return;
+            }
+
             var im_closest = true;
             for (node.connections.items) |connection| {
                 if (connection.id_known()) {
@@ -54,6 +60,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             if (im_closest) {
                 if (node.my_address == null) {
                     warn("My address is not known yet\n", .{});
+                    try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } } } });
                     return;
                 }
                 try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address.? } } } });

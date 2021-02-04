@@ -12,6 +12,7 @@ const allocator = defines.allocator;
 
 const warn = @import("std").debug.warn;
 
+const node = @import("node.zig");
 const State = enum {
     Init,
     Connected,
@@ -28,11 +29,7 @@ socket: c.nng_socket = undefined,
 state: State = .Init,
 
 pub fn id_known(self: *Connection) bool {
-    for (self.id) |d| {
-        if (d != 0)
-            return true;
-    }
-    return false;
+    return !node.is_zero(self.id);
 }
 
 pub fn alloc() !*Connection {

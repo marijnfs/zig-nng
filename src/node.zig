@@ -208,7 +208,7 @@ pub const Job = union(enum) {
             .send_request => {
                 const conn_guid = self.send_request.conn_guid;
                 const guid = self.send_request.guid;
-                var conn = connection_by_guid(conn_guid);
+                var conn = try connection_by_guid(conn_guid);
 
                 const request = self.send_request.enveloped;
 
@@ -220,9 +220,9 @@ pub const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                warn("n outgoing: {}\n", .{outgoing_workers.items});
+                warn("routing request to worker: {}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
-                    if (out_worker.accepting() and out_worker.guid == conn_guid) {
+                    if (out_worker.accepting() and out_worker.connection == conn) {
                         warn("selected out_worker {}\n", .{out_worker});
 
                         out_worker.send(request_msg.?);
@@ -232,8 +232,8 @@ pub const Job = union(enum) {
                 }
 
                 // If we get here nothing was sent, reschedule
-                warn("reschedule\n", .{});
-                try enqueue(self.*);
+                warn("drop message: {}\n", .{self.*});
+                // try enqueue(self.*);
             },
             .send_response => {
                 const guid = self.send_response.guid;
@@ -303,8 +303,8 @@ pub const Job = union(enum) {
 
                 // Create a worker
                 warn("connect on socket: {}\n", .{conn.socket});
-                var out_worker = try OutWork.alloc(conn.socket);
-                out_worker.guid = conn.guid;
+                var out_worker = try OutWork.alloc(conn);
+                out_worker.guid = std.mem.zeroes(Guid);
                 try outgoing_workers.append(out_worker);
 
                 const guid = defines.get_guid();
@@ -426,6 +426,14 @@ pub fn rand_id() ID {
     return id;
 }
 
+pub fn is_zero(id: ID) bool {
+    for (id) |d| {
+        if (d != 0)
+            return false;
+    }
+    return true;
+}
+
 fn init() !void {
     defines.init();
 
@@ -507,4 +515,8 @@ pub fn main() !void {
 test "serialise" {
     var sock_main: c.nng_msg = undefined;
     try nng_ret(c.nng_rep0_open(&main_socket));
+}
+
+test "connectTest" {
+    var conn_1 = Connection.alloc();
 }

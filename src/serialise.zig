@@ -57,7 +57,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                 const C = comptime std.meta.Child(T);
 
                 if (len * @sizeOf(C) > data_slice.len)
-                    return error.FailedToDeserialize;
+                    return error.FailedToDeserialise;
 
                 if (comptime std.meta.sentinel(T) == null) {
                     t = try allocator.alloc(C, len);
@@ -77,7 +77,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                     if (@field(TagType, field_info.name) == active_tag) {
                         const name = field_info.name;
                         const FieldType = field_info.field_type;
-                        warn("deserialize type: {}\n", .{FieldType});
+                        warn("deserialise type: {}\n", .{FieldType});
                         t = @unionInit(T, name, try deserialise_msg(FieldType, msg));
                     }
                 }
@@ -85,7 +85,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                 const bytes_mem = mem.asBytes(&t);
                 const msg_slice = msg_to_slice(msg);
                 if (bytes_mem.len > msg_slice.len)
-                    return error.FailedToDeserialize;
+                    return error.FailedToDeserialise;
                 mem.copy(u8, bytes_mem, msg_slice[0..bytes_mem.len]);
                 try nng_ret(c.nng_msg_trim(msg, bytes_mem.len));
             }
@@ -104,11 +104,20 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
             const bytes_mem = mem.asBytes(&t);
             const msg_slice = msg_to_slice(msg);
             if (bytes_mem.len > msg_slice.len)
-                return error.FailedToDeserialize;
+                return error.FailedToDeserialise;
             mem.copy(u8, bytes_mem, msg_slice[0..bytes_mem.len]);
             try nng_ret(c.nng_msg_trim(msg, bytes_mem.len));
         },
-        else => @compileError("Cannot deserialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
+        .Optional => {
+            const C = comptime std.meta.Child(T);
+            const opt = try deserialise_msg(u8, msg);
+            if (opt > 0) {
+                t = try deserialise_msg(C, msg);
+            } else {
+                t = null;
+            }
+        },
+        else => @compileError("Cannot deserialise " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
     }
     return t;
 }
@@ -166,6 +175,16 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
             var tmp = t;
             try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(T)));
         },
-        else => @compileError("Cannot serialize " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
+        .Optional => {
+            if (t == null) {
+                const opt: u8 = 0;
+                try serialise_msg(opt, msg);
+            } else {
+                const opt: u8 = 1;
+                try serialise_msg(opt, msg);
+                try serialise_msg(t.?, msg);
+            }
+        },
+        else => @compileError("Cannot serialise " ++ @tagName(@typeInfo(T)) ++ " types (unimplemented)."),
     }
 }
