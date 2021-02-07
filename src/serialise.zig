@@ -97,7 +97,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                     warn("Failed to read operand\n", .{});
                     return error.DeserialisationFail;
                 };
-                break :blk @intToEnum(T, @intCast(@TagType(T), int_operand));
+                break :blk @intToEnum(T, @intCast(std.meta.TagType(T), int_operand));
             };
         },
         .Int => {
@@ -152,7 +152,7 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
         .Union => {
             if (info.Union.tag_type) |TagType| {
                 const active_tag = std.meta.activeTag(t);
-                try serialise_msg(@as(@TagType(T), active_tag), msg);
+                try serialise_msg(@as(std.meta.TagType(T), active_tag), msg);
 
                 inline for (info.Union.fields) |field_info| {
                     if (@field(TagType, field_info.name) == active_tag) {
