@@ -220,7 +220,7 @@ pub const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                warn("routing request to worker: {}\n", .{outgoing_workers.items});
+                warn("routing request to worker: {any}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
                     if (out_worker.accepting() and out_worker.connection == conn) {
                         warn("selected out_worker {}\n", .{out_worker});
@@ -254,7 +254,7 @@ pub const Job = union(enum) {
                         break;
                     }
                 } else {
-                    warn("Couldn't response, guid: {}, workers: {}\n", .{ guid, incoming_workers });
+                    warn("Couldn't response, guid: {any}, workers: {any}\n", .{ guid, incoming_workers });
                 }
             },
             .store => {
@@ -278,7 +278,7 @@ pub const Job = union(enum) {
                 try handle_request(guid, request, msg);
             },
             .bootstrap => {
-                warn("bootstrap: {}\n", .{known_addresses.items});
+                warn("bootstrap: {any}\n", .{known_addresses.items});
                 var n = self.bootstrap.n;
                 if (known_addresses.items.len < n)
                     n = known_addresses.items.len;
@@ -347,7 +347,7 @@ pub const Job = union(enum) {
             },
             .manage_connections => {
                 //check if there are any connections
-                warn("Found {} connections\n", .{connections.items});
+                warn("Found {any} connections\n", .{connections.items});
                 if (connections.items.len == 0) {
                     warn("no connections found, looking for more\n", .{});
                     if (known_addresses.items.len == 0) {
@@ -470,7 +470,7 @@ fn timer_threadfunc(context: void) !void {
         c.nng_msleep(10000);
         try enqueue(Job{ .refresh_routing_table = {} });
 
-        warn("info, connections:{}\n", .{connections.items});
+        warn("info, connections:{any}\n", .{connections.items});
     }
 }
 
@@ -481,7 +481,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.debug.warn("usage: {} <url>, eg url=tcp://localhost:8123\n", .{args[0]});
+        std.debug.warn("usage: {s} <url>, eg url=tcp://localhost:8123\n", .{args[0]});
         std.os.exit(1);
     }
 

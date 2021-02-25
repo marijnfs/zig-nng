@@ -20,6 +20,7 @@ pub const InWork = struct {
         Init,
         Recv,
         Wait,
+        Error,
     };
 
     state: State,
@@ -61,6 +62,7 @@ pub const OutWork = struct {
         Ready, // Ready to accept
         Send,
         Wait, // Waiting for response
+        Error,
     };
 
     state: State = .Unconnected,
@@ -94,7 +96,7 @@ pub const OutWork = struct {
     pub fn alloc(connection: *Connection) !*OutWork {
         var o = c.nng_alloc(@sizeOf(OutWork));
         if (o == null) {
-            try nng_ret(2); // c.NNG_ENOMEM
+            try nng_ret(c.NNG_ENOMEM);
         }
 
         var w = OutWork.fromOpaque(o);
@@ -110,8 +112,20 @@ pub const OutWork = struct {
 
 pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
     warn("inwork callback\n", .{});
+
     const work = InWork.fromOpaque(arg);
+
+    nng_ret(c.nng_aio_result(work.aio)) catch {
+        warn("error\n", .{});
+        work.state = .Error;
+        return;
+    };
+
     switch (work.state) {
+        .Error => {
+            //disconnect
+            warn("Error state\n", .{});
+        },
         .Init => {
             c.nng_ctx_recv(work.ctx, work.aio);
             work.state = .Recv;
@@ -155,8 +169,15 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
 fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = OutWork.fromOpaque(arg);
-    warn("outwork callback {}\n", .{work});
+
+    nng_ret(c.nng_aio_result(work.aio)) catch {
+        warn("error\n", .{});
+        work.state = .Error;
+        return;
+    };
+
     switch (work.state) {
+        .Error => {},
         .Ready => {},
         .Send => {
             warn("out callback, calling recv\n", .{});

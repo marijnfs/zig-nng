@@ -107,7 +107,7 @@
 			"file": "src/node.zig",
 			"settings":
 			{
-				"buffer_size": 16712,
+				"buffer_size": 16892,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -116,7 +116,7 @@
 			"file": "src/serialise.zig",
 			"settings":
 			{
-				"buffer_size": 7019,
+				"buffer_size": 7035,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -125,7 +125,7 @@
 			"file": "src/connection.zig",
 			"settings":
 			{
-				"buffer_size": 1487,
+				"buffer_size": 1495,
 				"line_ending": "Unix"
 			}
 		},
@@ -568,7 +568,7 @@
 	],
 	"find":
 	{
-		"height": 36.0
+		"height": 33.0
 	},
 	"find_in_files":
 	{
@@ -736,7 +736,7 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 16712,
+						"buffer_size": 16892,
 						"regions":
 						{
 						},
@@ -766,7 +766,7 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 7019,
+						"buffer_size": 7035,
 						"regions":
 						{
 						},
@@ -796,7 +796,7 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 1487,
+						"buffer_size": 1495,
 						"regions":
 						{
 						},
@@ -1108,7 +1108,7 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 2577.0,
+						"translation.y": 2241.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 12,
@@ -1149,7 +1149,7 @@
 	],
 	"incremental_find":
 	{
-		"height": 36.0
+		"height": 33.0
 	},
 	"input":
 	{
@@ -1190,7 +1190,7 @@
 	"project": "zig-nng.sublime-project",
 	"replace":
 	{
-		"height": 66.0
+		"height": 60.0
 	},
 	"save_all_on_build": true,
 	"select_file":
