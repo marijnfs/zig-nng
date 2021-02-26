@@ -101,8 +101,12 @@ pub const OutWork = struct {
 
         var w = OutWork.fromOpaque(o);
         w.connection = connection;
-        try nng_ret(c.nng_aio_alloc(&w.aio, outWorkCallback, w));
+        w.guid = defines.get_guid();
 
+        // setup aio and context
+        const timeout = 2000;
+        try nng_ret(c.nng_aio_alloc(&w.aio, outWorkCallback, w));
+        c.nng_aio_set_timeout(w.aio.?, timeout);
         try nng_ret(c.nng_ctx_open(&w.ctx, connection.socket));
         w.state = State.Ready;
 
@@ -124,7 +128,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
     switch (work.state) {
         .Error => {
             //disconnect
-            warn("Error state\n", .{});
+            warn("In worker Error state\n", .{});
         },
         .Init => {
             c.nng_ctx_recv(work.ctx, work.aio);
@@ -177,7 +181,9 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
     };
 
     switch (work.state) {
-        .Error => {},
+        .Error => {
+            warn("Outworker Error state\n", .{});
+        },
         .Ready => {},
         .Send => {
             warn("out callback, calling recv\n", .{});

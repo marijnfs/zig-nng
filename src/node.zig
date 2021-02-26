@@ -304,13 +304,12 @@ pub const Job = union(enum) {
                 // Create a worker
                 warn("connect on socket: {}\n", .{conn.socket});
                 var out_worker = try OutWork.alloc(conn);
-                out_worker.guid = std.mem.zeroes(Guid);
                 try outgoing_workers.append(out_worker);
 
                 const guid = defines.get_guid();
                 try self_guids.put(guid, true); //register that this guid is to be processed by us
                 const conn_guid = conn.guid;
-                try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
+                try enqueue(Job{ .send_request = .{ .conn_guid = conn_guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
             },
 
             .handle_response => {
@@ -516,11 +515,13 @@ test "connectTest" {
     var conn_1 = try Connection.alloc();
     var conn_2 = try Connection.alloc();
 
-    conn_1.init("tcp://172.0.0.1:1234");
-    conn_2.init("tcp://172.0.0.1:1235");
+    var bind_point = "tcp://172.0.0.1:1234";
+    conn_1.init(bind_point);
+    conn_2.init(bind_point);
 
     try conn_1.req_open();
     try conn_1.dial();
+
     try conn_2.rep_open();
     try conn_2.listen();
 }
