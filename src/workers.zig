@@ -17,10 +17,10 @@ const Connection = @import("connection.zig");
 
 pub const InWork = struct {
     const State = enum {
-        Init,
-        Recv,
-        Wait,
-        Error,
+        Init, //going to recv
+        Recv, //waiting for a recv
+        Wait, //waiting for processing to create response
+        Error, //error happened
     };
 
     state: State,
@@ -59,10 +59,10 @@ pub const InWork = struct {
 pub const OutWork = struct {
     const State = enum {
         Unconnected, // Unconnected
-        Ready, // Ready to accept
-        Send,
-        Wait, // Waiting for response
-        Error,
+        Ready, // Ready to send out a message
+        Send, // Message was sent, going to call recv
+        Wait, // Waiting for reply after recv
+        Error, //error happened
     };
 
     state: State = .Unconnected,
@@ -136,33 +136,29 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
 
         .Recv => {
-            nng_ret(c.nng_aio_result(work.aio)) catch {
-                work.state = .Init;
-                return;
-            };
-
             const msg = c.nng_aio_get_msg(work.aio);
 
-            var guid: Guid = 0;
-            nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch |e| {
+            var msg_guid: Guid = 0;
+            nng_ret(c.nng_msg_trim_u64(msg, &msg_guid)) catch |e| {
                 warn("Failed to trim incoming message: {}\n", .{e});
-                work.state = .Init;
+                work.state = .Error;
                 return;
             };
 
             // set worker up for response
-            work.guid = guid;
+            work.guid = msg_guid;
             work.state = .Wait;
 
             // We deserialise the message in a request
             const request = deserialise_msg(Request, msg.?) catch |e| {
                 warn("Failed to deserialise incoming request: {}\n", .{e});
-                work.state = .Init;
+                work.state = .Error;
                 return;
             };
 
-            // We still add the msg, in case we need to query extra information
-            enqueue(Job{ .handle_request = .{ .guid = guid, .enveloped = request, .msg = msg.? } }) catch |e| {
+            // We handle the msg; we still pass on the nng_msg,
+            // in case we need to query extra information
+            enqueue(Job{ .handle_request = .{ .guid = msg_guid, .enveloped = request, .msg = msg.? } }) catch |e| {
                 warn("error: {}\n", .{e});
             };
         },
@@ -193,23 +189,26 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
 
         .Wait => {
-            nng_ret(c.nng_aio_result(work.aio)) catch {
-                warn("error\n", .{});
-                work.state = .Ready;
-                return;
-            };
-
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
 
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
                 warn("couldn't trim guid\n", .{});
-                work.state = .Ready;
+                work.state = .Error;
                 return;
             };
-            warn("read response guid: {}\n", .{guid});
-            const response = deserialise_msg(Response, msg.?) catch unreachable;
+
+            warn("outworker: response guid: {}\n", .{guid});
+            const response = deserialise_msg(Response, msg.?) catch {
+                warn("couldn't deserialise msg\n", .{});
+                work.state = .Error;
+                return;
+            };
+
+            // handle response
             enqueue(Job{ .handle_response = .{ .guid = guid, .enveloped = response, .msg = msg.? } }) catch unreachable;
+
+            // We can send out a message again
             work.state = .Ready;
         },
 

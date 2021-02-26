@@ -101,9 +101,17 @@ fn Envelope(comptime T: type) type {
     };
 }
 
+fn Envelope_NoConnGuid(comptime T: type) type {
+    return struct {
+        enveloped: T,
+        guid: Guid = 0, //request processing id
+        msg: *c.nng_msg = undefined,
+    };
+}
+
 const RequestEnvelope = Envelope(Request);
 
-const ResponseEnvelope = Envelope(Response);
+const ResponseEnvelope = Envelope_NoConnGuid(Response);
 
 const HandleStdinLine = struct {
     buffer: []u8,
