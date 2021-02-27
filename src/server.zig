@@ -4,7 +4,7 @@ const c = @import("c.zig").c;
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
     // in this case?
-    std.debug.warn("{}: {}\n", .{ msg, @ptrCast([*]const u8, c.nng_strerror(code)) });
+    std.debug.warn("{any}: {s}\n", .{ msg, @ptrCast([*:0]const u8, c.nng_strerror(code)) });
     std.os.exit(1);
 }
 
@@ -82,7 +82,7 @@ pub fn serve(comptime worker_count: comptime_int, address: [*]const u8) void {
         fatal("nng_listen", r2);
     }
 
-    std.debug.warn("listening on {}\n", .{address});
+    std.debug.warn("listening on {any}\n", .{address});
 
     for (works) |w| {
         serverCallback(w.toOpaque());
@@ -101,7 +101,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len <= 1) {
-        std.debug.warn("usage: {} <url>\n", .{args[0]});
+        std.debug.warn("usage: {s} <url>\n", .{args[0]});
         std.os.exit(1);
     }
 

@@ -5,7 +5,7 @@ const warn = std.debug.warn;
 fn fatal(msg: []const u8, code: c_int) void {
     // TODO: std.fmt should accept [*c]const u8 for {s} format specific, should not require {s}
     // in this case?
-    std.debug.warn("{}: {}\n", .{ msg, @ptrCast([*]const u8, c.nng_strerror(code)) });
+    std.debug.warn("{s}: {s}\n", .{ msg, @ptrCast([*:0]const u8, c.nng_strerror(code)) });
     std.os.exit(1);
 }
 
@@ -72,7 +72,7 @@ pub fn request(address: [:0]const u8, msec: u32) !void {
     var body = @ptrCast([*]u8, c.nng_msg_body(msg));
     var body_slice = body[0..len];
 
-    warn("received: {} :{}\n", .{ body_slice, len });
+    warn("received: {s} :{}\n", .{ body_slice, len });
     std.debug.warn("Request took {} milliseconds.\n", .{end - start});
 }
 
@@ -82,7 +82,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len <= 2) {
-        std.debug.warn("usage: {} <url> <msec>\n", .{args[0]});
+        std.debug.warn("usage: {s} <url> <msec>\n", .{args[0]});
         std.os.exit(1);
     }
 

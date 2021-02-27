@@ -101,9 +101,17 @@ fn Envelope(comptime T: type) type {
     };
 }
 
+fn Envelope_NoConnGuid(comptime T: type) type {
+    return struct {
+        enveloped: T,
+        guid: Guid = 0, //request processing id
+        msg: *c.nng_msg = undefined,
+    };
+}
+
 const RequestEnvelope = Envelope(Request);
 
-const ResponseEnvelope = Envelope(Response);
+const ResponseEnvelope = Envelope_NoConnGuid(Response);
 
 const HandleStdinLine = struct {
     buffer: []u8,
@@ -220,7 +228,7 @@ pub const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                warn("routing request to worker: {}\n", .{outgoing_workers.items});
+                warn("routing request to worker: {any}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
                     if (out_worker.accepting() and out_worker.connection == conn) {
                         warn("selected out_worker {}\n", .{out_worker});
@@ -254,7 +262,7 @@ pub const Job = union(enum) {
                         break;
                     }
                 } else {
-                    warn("Couldn't response, guid: {}, workers: {}\n", .{ guid, incoming_workers });
+                    warn("Couldn't response, guid: {any}, workers: {any}\n", .{ guid, incoming_workers });
                 }
             },
             .store => {
@@ -278,7 +286,7 @@ pub const Job = union(enum) {
                 try handle_request(guid, request, msg);
             },
             .bootstrap => {
-                warn("bootstrap: {}\n", .{known_addresses.items});
+                warn("bootstrap: {any}\n", .{known_addresses.items});
                 var n = self.bootstrap.n;
                 if (known_addresses.items.len < n)
                     n = known_addresses.items.len;
@@ -304,13 +312,12 @@ pub const Job = union(enum) {
                 // Create a worker
                 warn("connect on socket: {}\n", .{conn.socket});
                 var out_worker = try OutWork.alloc(conn);
-                out_worker.guid = std.mem.zeroes(Guid);
                 try outgoing_workers.append(out_worker);
 
                 const guid = defines.get_guid();
                 try self_guids.put(guid, true); //register that this guid is to be processed by us
                 const conn_guid = conn.guid;
-                try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
+                try enqueue(Job{ .send_request = .{ .conn_guid = conn_guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
             },
 
             .handle_response => {
@@ -347,7 +354,7 @@ pub const Job = union(enum) {
             },
             .manage_connections => {
                 //check if there are any connections
-                warn("Found {} connections\n", .{connections.items});
+                warn("Found {any} connections\n", .{connections.items});
                 if (connections.items.len == 0) {
                     warn("no connections found, looking for more\n", .{});
                     if (known_addresses.items.len == 0) {
@@ -470,7 +477,7 @@ fn timer_threadfunc(context: void) !void {
         c.nng_msleep(10000);
         try enqueue(Job{ .refresh_routing_table = {} });
 
-        warn("info, connections:{}\n", .{connections.items});
+        warn("info, connections:{any}\n", .{connections.items});
     }
 }
 
@@ -481,7 +488,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.debug.warn("usage: {} <url>, eg url=tcp://localhost:8123\n", .{args[0]});
+        std.debug.warn("usage: {s} <url>, eg url=tcp://localhost:8123\n", .{args[0]});
         std.os.exit(1);
     }
 
@@ -516,11 +523,13 @@ test "connectTest" {
     var conn_1 = try Connection.alloc();
     var conn_2 = try Connection.alloc();
 
-    conn_1.init("tcp://172.0.0.1:1234");
-    conn_2.init("tcp://172.0.0.1:1235");
+    var bind_point = "tcp://172.0.0.1:1234";
+    conn_1.init(bind_point);
+    conn_2.init(bind_point);
 
     try conn_1.req_open();
     try conn_1.dial();
+
     try conn_2.rep_open();
     try conn_2.listen();
 }
