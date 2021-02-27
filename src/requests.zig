@@ -86,3 +86,17 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
         },
     }
 }
+
+test "serialise" {
+    const serialise = @import("serialise.zig");
+
+    const req = Request{ .ping_id = .{ .conn_guid = 10 } };
+
+    var msg: ?*c.nng_msg = undefined;
+    try nng_ret(c.nng_msg_alloc(&msg, 0));
+
+    try serialise.serialise_msg(req, msg.?);
+    const req_deserialized = try serialise.deserialise_msg(Request, msg.?);
+
+    warn("{} {}\n", .{ req, req_deserialized });
+}

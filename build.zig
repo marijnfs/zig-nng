@@ -34,6 +34,13 @@ pub fn build(b: *Builder) void {
     main_tests.linkLibC();
     main_tests.setBuildMode(mode);
     main_tests.linkSystemLibrary("nng");
+
+    var req_tests = b.addTest("src/requests.zig");
+    req_tests.addIncludeDir("nng/include");
+    req_tests.addIncludeDir("src");
+    req_tests.linkLibC();
+    req_tests.setBuildMode(mode);
+    req_tests.linkSystemLibrary("nng");
     // main_tests.linkLibrary(nng_lib);
 
     const exe_server = b.addExecutable("server", "src/server.zig");
@@ -59,6 +66,7 @@ pub fn build(b: *Builder) void {
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);
+    test_step.dependOn(&req_tests.step);
 }
 
 pub fn getLibrary(
