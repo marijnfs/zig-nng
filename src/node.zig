@@ -92,7 +92,7 @@ const Connect = struct {
     address: [:0]const u8,
 };
 
-fn Envelope(comptime T: type) type {
+fn OutEnvelope(comptime T: type) type {
     return struct {
         enveloped: T,
         conn_guid: Guid = 0, //Guid for interal addressing of output connection
@@ -101,7 +101,7 @@ fn Envelope(comptime T: type) type {
     };
 }
 
-fn Envelope_NoConnGuid(comptime T: type) type {
+fn Envelope(comptime T: type) type {
     return struct {
         enveloped: T,
         guid: Guid = 0, //request processing id
@@ -109,9 +109,9 @@ fn Envelope_NoConnGuid(comptime T: type) type {
     };
 }
 
-const RequestEnvelope = Envelope(Request);
+const RequestEnvelope = OutEnvelope(Request);
 
-const ResponseEnvelope = Envelope_NoConnGuid(Response);
+const ResponseEnvelope = Envelope(Response);
 
 const HandleStdinLine = struct {
     buffer: []u8,
@@ -262,7 +262,7 @@ pub const Job = union(enum) {
                         break;
                     }
                 } else {
-                    warn("Couldn't response, guid: {any}, workers: {any}\n", .{ guid, incoming_workers });
+                    warn("Couldn't respond, guid: {any}, workers: {any}\n", .{ guid, incoming_workers });
                 }
             },
             .store => {
@@ -447,19 +447,19 @@ fn init() !void {
     warn("Init\n", .{});
     my_id = rand_id();
 
-    warn("My ID: {x}\n", .{my_id});
+    warn("My ID: {x}\n", .{std.fmt.fmtSliceHexLower(my_id[0..])});
 
     warn("Filling routing table\n", .{});
     var i: usize = 0;
     while (i < defines.ROUTING_TABLE_SIZE) : (i += 1) {
         var other_id = get_finger_id(my_id, i);
         try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID) });
-        warn("Finger table {}: {x}\n", .{ i, other_id });
+        warn("Finger table {}: {x}\n", .{ i, std.fmt.fmtSliceHexLower(other_id[0..]) });
     }
 
-    event_thread = try Thread.spawn({}, event_queue_threadfunc);
-    timer_thread = try Thread.spawn({}, timer_threadfunc);
-    read_lines_thread = try Thread.spawn({}, read_lines);
+    event_thread = try Thread.spawn(event_queue_threadfunc, {});
+    timer_thread = try Thread.spawn(timer_threadfunc, {});
+    read_lines_thread = try Thread.spawn(read_lines, {});
 }
 
 fn ceil_log2(n: usize) usize {

@@ -61,9 +61,9 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
                 if (node.my_address == null) {
                     warn("My address is not known yet\n", .{});
                     try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } } } });
-                    return;
+                } else {
+                    try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address.? } } } });
                 }
-                try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address.? } } } });
             } else {
                 const nearest_conn = try node.connection_by_nearest_id(search_id);
                 try node.enqueue(Job{ .send_request = .{ .conn_guid = nearest_conn.guid, .guid = guid, .enveloped = request } });

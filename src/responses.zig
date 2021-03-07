@@ -43,7 +43,7 @@ pub fn handle_response(guid: u64, response: Response) !void {
 
             var conn = try node.connection_by_guid(conn_guid);
             conn.id = response.ping_id.id;
-            warn("Set to id: {x}\n", .{conn.id});
+            warn("Set to id: {x}\n", .{std.fmt.fmtSliceHexLower(conn.id[0..])});
         },
         .broadcast_confirm => {
             warn("got broadcast confirm\n", .{});
