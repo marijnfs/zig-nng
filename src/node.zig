@@ -175,6 +175,7 @@ fn read_lines(context: void) !void {
 }
 
 pub fn enqueue(job: Job) !void {
+    warn("queuing job: {}\n", .{job});
     try event_queue.push(job);
 }
 
@@ -198,7 +199,7 @@ pub const Job = union(enum) {
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
-        warn("work: {}\n", .{self.*});
+        warn("grabbing work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
                 var stdout_file = std.io.getStdOut();
@@ -244,15 +245,19 @@ pub const Job = union(enum) {
                 // try enqueue(self.*);
             },
             .send_response => {
+                warn("sending response\n", .{});
                 const guid = self.send_response.guid;
                 const response = self.send_response.enveloped;
                 var response_msg: ?*c.nng_msg = undefined;
                 try nng_ret(c.nng_msg_alloc(&response_msg, 0));
+                warn("1sending response\n", .{});
 
                 // First set the guid
                 try nng_ret(c.nng_msg_append_u64(response_msg, guid));
+                warn("2sending response {}\n", .{response});
 
-                try serialise_msg(response, response_msg.?);
+                serialise_msg(response, response_msg.?) catch unreachable;
+                warn("3sending response\n", .{});
 
                 warn("Sending response, guid {}, msg: {}\n", .{ guid, response_msg });
                 for (incoming_workers) |w| {
@@ -387,7 +392,7 @@ fn event_queue_threadfunc(context: void) void {
     while (true) {
         if (event_queue.pop()) |*job| {
             job.work() catch |e| {
-                warn("e {}\n", .{e});
+                warn("Work Error: {}\n", .{e});
             };
         } else {
             // warn("sleeping\n", .{});
@@ -517,6 +522,17 @@ pub fn main() !void {
     try enqueue(Job{ .bootstrap = .{ .n = 4 } });
 
     event_thread.wait();
+}
+
+test "serialiseTest" {
+    var search_id: ID = undefined;
+    var nearest_id: ID = undefined;
+    // var nearest_peer = Response{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } };
+    var nearest_peer = Response{ .nearest_peer2 = .{ .conn_guid = defines.get_guid() } };
+
+    var msg: ?*c.nng_msg = undefined;
+    try nng_ret(c.nng_msg_alloc(&msg, 0));
+    try serialise_msg(nearest_peer, msg.?);
 }
 
 test "connectTest" {

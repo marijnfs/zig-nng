@@ -125,6 +125,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
 pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
     const T = comptime @TypeOf(t);
 
+    warn("serialise_msg({any})\n", .{t});
     const info = @typeInfo(T);
     switch (info) {
         .Void => {},
@@ -132,12 +133,14 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
             inline for (info.Struct.fields) |*field_info| {
                 const name = field_info.name;
                 const FieldType = field_info.field_type;
+                warn("serialising struct field {s} {any}\n", .{ name, @field(t, name) });
                 try serialise_msg(@field(t, name), msg);
             }
         },
         .Array => {
             const len = info.Array.len;
             var tmp = t;
+            warn("tmp{any} len{} T{}\n", .{ t, len, @sizeOf(std.meta.Child(T)) });
             try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, &tmp), @sizeOf(std.meta.Child(T)) * len));
         },
         .Pointer => {
@@ -152,7 +155,10 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
         .Union => {
             if (info.Union.tag_type) |TagType| {
                 const active_tag = std.meta.activeTag(t);
+                warn("serialising tag {}\n", .{@as(std.meta.TagType(T), active_tag)});
+
                 try serialise_msg(@as(std.meta.TagType(T), active_tag), msg);
+                warn("serialising Union {}\n", .{active_tag});
 
                 inline for (info.Union.fields) |field_info| {
                     if (@field(TagType, field_info.name) == active_tag) {
@@ -161,6 +167,8 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
                         try serialise_msg(@field(t, name), msg);
                     }
                 }
+
+                warn("done serialising Union \n", .{});
             } else {
                 const bytes_mem = mem.asBytes(&t);
                 var tmp = t;
