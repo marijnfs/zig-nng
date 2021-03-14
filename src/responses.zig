@@ -52,5 +52,6 @@ pub fn handle_response(guid: u64, response: Response) !void {
         .nearest_peer => {
             warn("Got nearest peer info: {}", .{response});
         },
+        .nearest_peer2 => {},
     }
 }
