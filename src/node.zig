@@ -521,22 +521,9 @@ pub fn main() !void {
 }
 
 test "serialiseTest" {
-    // const SomeResponse = union(enum) {
-    //     // ping_id: struct { conn_guid: Guid, id: ID, sockaddr: c.nng_sockaddr },
-    //     broadcast_confirm: void,
-    //     // nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?[:0]u8 },
-    //     nearest_peer2: struct { conn_guid: Guid },
-    // };
-
-    // const bla = SomeResponse{ .nearest_peer2 = .{ .conn_guid = defines.get_guid() } };
-    // var msg: ?*c.nng_msg = undefined;
-    // try nng_ret(c.nng_msg_alloc(&msg, 0));
-    // try serialise_msg(bla, msg.?);
-
     var search_id: ID = undefined;
     var nearest_id: ID = undefined;
-    // var nearest_peer = Response{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } };
-    var nearest_peer = Response{ .nearest_peer2 = .{ .conn_guid = defines.get_guid() } };
+    var nearest_peer = Response{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } };
 
     var msg: ?*c.nng_msg = undefined;
     try nng_ret(c.nng_msg_alloc(&msg, 0));

@@ -12,7 +12,7 @@ const utils = @import("utils.zig");
 
 pub const Response = union(enum) {
     ping_id: struct { conn_guid: Guid, id: ID, sockaddr: c.nng_sockaddr },
-    broadcast_confirm: void,
+    broadcast_confirm: usize,
     nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?[:0]u8 },
 };
 

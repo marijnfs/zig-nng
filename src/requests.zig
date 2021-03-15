@@ -71,7 +71,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
         },
         .broadcast => {
             const message = request.broadcast;
-            try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = {} } } });
+            try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = 0 } } });
 
             if (node.guid_seen.get(guid)) |seen| {
                 warn("already saw message, not broadcasting\n", .{});
