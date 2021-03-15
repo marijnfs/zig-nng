@@ -175,6 +175,7 @@ fn read_lines(context: void) !void {
 }
 
 pub fn enqueue(job: Job) !void {
+    warn("queuing job: {}\n", .{job});
     try event_queue.push(job);
 }
 
@@ -198,7 +199,7 @@ pub const Job = union(enum) {
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
-        warn("work: {}\n", .{self.*});
+        warn("grabbing work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
                 var stdout_file = std.io.getStdOut();
@@ -387,7 +388,7 @@ fn event_queue_threadfunc(context: void) void {
     while (true) {
         if (event_queue.pop()) |*job| {
             job.work() catch |e| {
-                warn("e {}\n", .{e});
+                warn("Work Error: {}\n", .{e});
             };
         } else {
             // warn("sleeping\n", .{});
@@ -517,6 +518,29 @@ pub fn main() !void {
     try enqueue(Job{ .bootstrap = .{ .n = 4 } });
 
     event_thread.wait();
+}
+
+test "serialiseTest" {
+    // const SomeResponse = union(enum) {
+    //     // ping_id: struct { conn_guid: Guid, id: ID, sockaddr: c.nng_sockaddr },
+    //     broadcast_confirm: void,
+    //     // nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?[:0]u8 },
+    //     nearest_peer2: struct { conn_guid: Guid },
+    // };
+
+    // const bla = SomeResponse{ .nearest_peer2 = .{ .conn_guid = defines.get_guid() } };
+    // var msg: ?*c.nng_msg = undefined;
+    // try nng_ret(c.nng_msg_alloc(&msg, 0));
+    // try serialise_msg(bla, msg.?);
+
+    var search_id: ID = undefined;
+    var nearest_id: ID = undefined;
+    // var nearest_peer = Response{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } };
+    var nearest_peer = Response{ .nearest_peer2 = .{ .conn_guid = defines.get_guid() } };
+
+    var msg: ?*c.nng_msg = undefined;
+    try nng_ret(c.nng_msg_alloc(&msg, 0));
+    try serialise_msg(nearest_peer, msg.?);
 }
 
 test "connectTest" {
