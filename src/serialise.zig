@@ -144,7 +144,8 @@ pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
             if (comptime std.meta.trait.isSlice(T)) {
                 const C = std.meta.Child(T);
                 try nng_ret(c.nng_msg_append_u64(msg, @intCast(u64, t.len)));
-                try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, t), @sizeOf(C) * t.len));
+                if (t.len > 0)
+                    try nng_ret(c.nng_msg_append(msg, @ptrCast(*c_void, t), @sizeOf(C) * t.len));
             } else {
                 @compileError("Expected to serialise slice");
             }
