@@ -200,6 +200,7 @@ pub const Job = union(enum) {
 
     fn work(self: *Job) !void {
         warn("grabbing work: {}\n", .{self.*});
+        try log("grabbing work");
         switch (self.*) {
             .print_msg => {
                 var stdout_file = std.io.getStdOut();
@@ -442,6 +443,19 @@ pub fn is_zero(id: ID) bool {
     return true;
 }
 
+var log_file: std.fs.File = undefined;
+
+fn log(t: [:0]const u8) !void {
+    const bytes_written = try log_file.writeAll(t);
+}
+
+fn log_fmt(template: anyvar, args: anyvar) !void {
+    const result = try std.fmt.allocPrint(allocator, template, args);
+    defer allocator.free(result);
+
+    const bytes_written = try log_file.writeAll(result);
+}
+
 fn init() !void {
     defines.init();
 
@@ -457,6 +471,12 @@ fn init() !void {
         try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID) });
         warn("Finger table {}: {x}\n", .{ i, std.fmt.fmtSliceHexLower(other_id[0..]) });
     }
+
+    log_file = try std.fs.cwd().createFile(
+        "log_file.txt",
+        .{ .read = true },
+    );
+    // defer file.close();
 
     event_thread = try Thread.spawn(event_queue_threadfunc, {});
     timer_thread = try Thread.spawn(timer_threadfunc, {});
