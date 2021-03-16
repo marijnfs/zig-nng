@@ -200,7 +200,7 @@ pub const Job = union(enum) {
 
     fn work(self: *Job) !void {
         warn("grabbing work: {}\n", .{self.*});
-        try log("grabbing work");
+        try log_fmt("grabbing work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
                 var stdout_file = std.io.getStdOut();
@@ -449,7 +449,7 @@ fn log(t: [:0]const u8) !void {
     const bytes_written = try log_file.writeAll(t);
 }
 
-fn log_fmt(template: anyvar, args: anyvar) !void {
+fn log_fmt(comptime template: anytype, args: anytype) !void {
     const result = try std.fmt.allocPrint(allocator, template, args);
     defer allocator.free(result);
 
