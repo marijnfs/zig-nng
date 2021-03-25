@@ -200,7 +200,6 @@ pub const Job = union(enum) {
 
     fn work(self: *Job) !void {
         warn("grabbing work: {}\n", .{self.*});
-        try log_fmt("grabbing work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
                 var stdout_file = std.io.getStdOut();
@@ -399,10 +398,17 @@ fn event_queue_threadfunc(context: void) void {
 }
 
 fn get_finger_id(id: ID, bit: usize) ID {
+    // 256 bits = 64 bytes
+    // We find the index in the byte (bit_id)
+    // We find the byte (byte_id)
     const byte_id: usize = bit / 8;
-    const bit_id: u3 = @intCast(u3, 7 - bit % 8);
+    const single_byte: u3 = @intCast(u3, bit % 8);
+
+    // convert to bit index
+    const bit_id: u3 = @intCast(u3, 7 - single_byte);
+
     var new_id = id;
-    new_id[byte_id] = id[byte_id] ^ (@as(u8, 1) << bit_id);
+    new_id[byte_id] = id[byte_id] ^ (@as(u8, 1) << bit_id); //xor byte with bit in correct place
     return new_id;
 }
 
