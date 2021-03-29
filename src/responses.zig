@@ -25,8 +25,6 @@ pub fn handle_response(guid: u64, response: Response) !void {
     }
 
     if (!for_me) {
-        warn("Passing message on, guid not for me: {} {}\n", .{ guid, response });
-        warn("{}\n", .{node.self_guids.count()});
         try node.enqueue(node.Job{ .send_response = .{ .guid = guid, .enveloped = response } });
         return;
     }
@@ -49,6 +47,9 @@ pub fn handle_response(guid: u64, response: Response) !void {
             warn("got broadcast confirm\n", .{});
         },
         .nearest_peer => {
+            var stdout_file = std.io.getStdOut();
+            try stdout_file.writer().print("Got nearest peer info: {}", .{response});
+
             warn("Got nearest peer info: {}", .{response});
         },
     }
