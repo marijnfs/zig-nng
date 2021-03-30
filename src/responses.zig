@@ -53,6 +53,9 @@ pub fn handle_response(guid: u64, response: Response) !void {
             warn("got broadcast confirm\n", .{});
         },
         .nearest_peer => {
+            var stdout_file = std.io.getStdOut();
+            try stdout_file.writer().print("Got nearest peer info: {}", .{response});
+
             warn("Got nearest peer info: {}", .{response});
         },
     }

@@ -13,7 +13,7 @@ const allocator = defines.allocator;
 const warn = @import("std").debug.warn;
 
 const node = @import("node.zig");
-const State = enum {
+pub const State = enum {
     Init,
     Connected,
     Disconnected,
@@ -34,6 +34,10 @@ pub fn id_known(self: *Connection) bool {
 
 pub fn alloc() !*Connection {
     return try allocator.create(Connection);
+}
+
+pub fn free(self: *Connection) void {
+    allocator.destroy(self);
 }
 
 pub fn init(self: *Connection, address: [:0]const u8) void {

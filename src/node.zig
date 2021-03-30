@@ -1,6 +1,5 @@
 const std = @import("std");
 const fmt = std.fmt;
-const ArrayList = std.ArrayList;
 const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
 const warn = std.debug.warn;
@@ -50,13 +49,17 @@ pub var self_addresses = std.StringHashMap(bool).init(allocator);
 pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter to not rebroadcast messages
 pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter for self-addressed guids. Used to distinguish between messages to procress / pass on
 
+pub var messages = std.ArrayList([:0]u8).init(allocator);
+
 // Our routing table
 // Key's will be finger table base
 // Values will be actual peers
 // Will be periodically updated and queried to make actual connection
 const PeerInfo = struct {
-    id: ID,
-    address: ?[:0]u8 = undefined,
+    id: ID, //ID of the peer
+    address: ?[:0]u8 = undefined, //connection end point to connect to this peer
+    n_items: usize, //number of items this node stores (in it's proper range, not including auxiliary items); used for #items estimation
+    next_id: ID, //Nearest id to this node; used for #nodes estimation
 };
 var routing_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
@@ -327,6 +330,8 @@ pub const Job = union(enum) {
                 try handle_response(guid, response);
             },
             .handle_stdin_line => {
+                // Process a typed line
+                // currently we look at the first word as a key
                 const buf = self.handle_stdin_line.buffer;
                 const space = std.mem.indexOf(u8, buf, " ");
                 if (space) |idx| {
@@ -367,8 +372,21 @@ pub const Job = union(enum) {
                         .connect = .{ .address = known_addresses.items[r] },
                     });
                 }
+
+                // Remove bad connections
+                var i: usize = 0;
+                while (i < connections.items.len) {
+                    if (connections.items[i].state == .Disconnected) {
+                        connections.items[i].free();
+                        _ = connections.orderedRemove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
             },
             .refresh_routing_table => {
+                // The routing table is a hash map, with desired finger IDs as keys, and the closest matches as values
+                // We periodially
                 var it = routing_table.iterator();
                 while (it.next()) |kv| {
                     const find_id = kv.key;
@@ -474,7 +492,7 @@ fn init() !void {
     var i: usize = 0;
     while (i < defines.ROUTING_TABLE_SIZE) : (i += 1) {
         var other_id = get_finger_id(my_id, i);
-        try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID) });
+        try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID), .n_items = 0, .next_id = std.mem.zeroes(ID) });
         warn("Finger table {}: {x}\n", .{ i, std.fmt.fmtSliceHexLower(other_id[0..]) });
     }
 
