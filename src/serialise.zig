@@ -77,7 +77,6 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
                     if (@field(TagType, field_info.name) == active_tag) {
                         const name = field_info.name;
                         const FieldType = field_info.field_type;
-                        warn("deserialise type: {}\n", .{FieldType});
                         t = @unionInit(T, name, try deserialise_msg(FieldType, msg));
                     }
                 }

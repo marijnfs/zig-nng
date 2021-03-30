@@ -18,17 +18,21 @@ pub const Response = union(enum) {
 
 pub fn handle_response(guid: u64, response: Response) !void {
     warn("Response: {}\n", .{response});
-    var for_me: bool = node.self_guids.get(guid) != null;
 
-    if (for_me) {
-        warn("message for me! {} {}", .{ guid, response });
-    }
-
-    if (!for_me) {
-        warn("Passing message on, guid not for me: {} {}\n", .{ guid, response });
-        warn("{}\n", .{node.self_guids.count()});
-        try node.enqueue(node.Job{ .send_response = .{ .guid = guid, .enveloped = response } });
-        return;
+    // check guid for chainable messages
+    switch (response) {
+        .ping_id, .nearest_peer => {
+            var for_me: bool = node.self_guids.get(guid) != null;
+            if (for_me) {
+                warn("message for me! {} {}", .{ guid, response });
+            } else {
+                warn("Passing message on, guid not for me: {} {}\n", .{ guid, response });
+                warn("{}\n", .{node.self_guids.count()});
+                try node.enqueue(node.Job{ .send_response = .{ .guid = guid, .enveloped = response } });
+                return;
+            }
+        },
+        else => {},
     }
 
     switch (response) {

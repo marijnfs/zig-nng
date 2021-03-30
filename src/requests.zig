@@ -23,15 +23,16 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
     switch (request) {
         .ping_id => {
             const conn_guid = request.ping_id.conn_guid; //Guid that requesting node uses to assign Connection
-            warn("requesting pingid\n", .{});
+            warn("requesting pingid, guid and conn guid: {x} {x}\n", .{ guid, conn_guid });
             const pipe = c.nng_msg_get_pipe(msg);
             var sockaddr: c.nng_sockaddr = undefined;
             try nng_ret(c.nng_pipe_get_addr(pipe, c.NNG_OPT_REMADDR, &sockaddr));
-            const with_port = false;
 
             // connecting addr, add it to known
+            const with_port = false;
             const address_str = try utils.sockaddr_to_string(sockaddr, with_port);
             try node.known_addresses.append(address_str);
+
             warn("ping from {s}\n", .{address_str});
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid, .id = node.my_id, .sockaddr = sockaddr } } } });
         },
