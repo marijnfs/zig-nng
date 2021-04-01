@@ -8,6 +8,8 @@ const c = @import("c.zig").c;
 const AtomicQueue = @import("queue.zig").AtomicQueue;
 const nng_ret = @import("c.zig").nng_ret;
 
+const display = @import("display.zig");
+
 const defines = @import("defines.zig");
 const Guid = defines.Guid;
 const ID = defines.ID;
@@ -505,6 +507,7 @@ fn init() !void {
     event_thread = try Thread.spawn(event_queue_threadfunc, {});
     timer_thread = try Thread.spawn(timer_threadfunc, {});
     read_lines_thread = try Thread.spawn(read_lines, {});
+    try display.start_display_thread();
 }
 
 fn ceil_log2(n: usize) usize {

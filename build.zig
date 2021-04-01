@@ -6,7 +6,7 @@ const Target = std.build.Target;
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     // const lib = b.addStaticLibrary("zig-nng", "src/main.zig");
-    // lib.addIncludeDir("nng/include");
+    // lib.addIncludeDir("ext/nng/include");
     // lib.setBuildMode(mode);
     // lib.linkLibC();
     // lib.install();
@@ -29,14 +29,14 @@ pub fn build(b: *Builder) void {
     // nng_lib.install();
 
     var main_tests = b.addTest("src/node.zig");
-    main_tests.addIncludeDir("nng/include");
+    main_tests.addIncludeDir("ext/nng/include");
     main_tests.addIncludeDir("src");
     main_tests.linkLibC();
     main_tests.setBuildMode(mode);
     main_tests.linkSystemLibrary("nng");
 
     var req_tests = b.addTest("src/requests.zig");
-    req_tests.addIncludeDir("nng/include");
+    req_tests.addIncludeDir("ext/nng/include");
     req_tests.addIncludeDir("src");
     req_tests.linkLibC();
     req_tests.setBuildMode(mode);
@@ -44,23 +44,24 @@ pub fn build(b: *Builder) void {
     // main_tests.linkLibrary(nng_lib);
 
     const exe_server = b.addExecutable("server", "src/server.zig");
-    exe_server.addIncludeDir("nng/include");
+    exe_server.addIncludeDir("ext/nng/include");
     exe_server.addIncludeDir("src");
     exe_server.linkSystemLibrary("nng"); //Todo, link to locally build library
     exe_server.linkLibC();
     exe_server.install();
 
     const exe_client = b.addExecutable("client", "src/client.zig");
-    exe_client.addIncludeDir("nng/include");
+    exe_client.addIncludeDir("ext/nng/include");
     exe_client.addIncludeDir("src");
     exe_client.linkSystemLibrary("nng"); //Todo, link to locally build library
     exe_client.linkLibC();
     exe_client.install();
 
     const exe_node = b.addExecutable("node", "src/node.zig");
-    exe_node.addIncludeDir("nng/include");
+    exe_node.addIncludeDir("ext/nng/include");
     exe_node.addIncludeDir("src");
     exe_node.linkSystemLibrary("nng"); //Todo, link to locally build library
+    exe_node.addPackagePath("zbox", "ext/zbox/src/box.zig");
     exe_node.linkLibC();
     exe_node.install();
 
@@ -90,7 +91,7 @@ pub fn getLibrary(
     lib.defineCMacro("_THREAD_SAFE");
     lib.defineCMacro("_POSIX_PTHREAD_SEMANTICS");
 
-    lib.addIncludeDir("nng/include");
+    lib.addIncludeDir("ext/nng/include");
     lib.addIncludeDir("nng/src");
 
     for (nng_src_files) |src_file| {
