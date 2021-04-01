@@ -1,6 +1,7 @@
 const std = @import("std");
 const zbox = @import("zbox");
 const page_allocator = std.heap.page_allocator;
+const model = @import("model.zig");
 
 var display_thread: *std.Thread = undefined;
 
