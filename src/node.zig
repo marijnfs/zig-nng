@@ -7,6 +7,7 @@ const warn = std.debug.warn;
 const c = @import("c.zig").c;
 const AtomicQueue = @import("queue.zig").AtomicQueue;
 const nng_ret = @import("c.zig").nng_ret;
+const logger = @import("logger.zig");
 
 const display = @import("display.zig");
 
@@ -26,6 +27,8 @@ const OutWork = workers.OutWork;
 // Guid that will be used to signify self-id
 pub var my_id: ID = std.mem.zeroes(ID);
 pub var my_address: ?[:0]u8 = undefined;
+pub var my_port: u16 = 0;
+
 var nearest_ID: ID = std.mem.zeroes(ID);
 var closest_distance: ID = std.mem.zeroes(ID);
 
@@ -46,9 +49,15 @@ var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
 pub var known_addresses = std.ArrayList([:0]u8).init(allocator);
 
 // Addresses to self
+// keep multiple, because they can change depending on locality
 pub var self_addresses = std.StringHashMap(bool).init(allocator);
 
-pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter to not rebroadcast messages
+// Guid filter to not rebroadcast messages
+// TODO: make rolling hash map
+pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator);
+
+// Guid filter to check messages to self (as opposed to passed on messages, which should be routed further)
+//
 pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter for self-addressed guids. Used to distinguish between messages to procress / pass on
 
 pub var messages = std.ArrayList([:0]u8).init(allocator);
@@ -129,7 +138,7 @@ pub const Message = struct {
 
 pub fn connection_by_guid(guid: Guid) !*Connection {
     for (connections.items) |conn| {
-        warn("Looking {} {}\n", .{ conn.guid, guid });
+        logger.log_fmt("Looking {} {}\n", .{ conn.guid, guid });
         if (conn.guid == guid) {
             return conn;
         }
@@ -163,14 +172,14 @@ pub fn connection_by_nearest_id(id: ID) !*Connection {
 
 // Rudimentary console
 fn read_lines(context: void) !void {
-    warn("Console started\n", .{});
+    logger.log_fmt("Console started\n", .{});
 
     var buf: [4096]u8 = undefined;
 
     while (true) {
         const line = (std.io.getStdIn().reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize)) catch |e| switch (e) {
             error.EndOfStream => {
-                warn("=Console Ending=\n", .{});
+                logger.log_fmt("=Console Ending=\n", .{});
                 return;
             },
             else => return e,
@@ -180,7 +189,7 @@ fn read_lines(context: void) !void {
 }
 
 pub fn enqueue(job: Job) !void {
-    warn("queuing job: {}\n", .{job});
+    logger.log_fmt("queuing job: {}\n", .{job});
     try event_queue.push(job);
 }
 
@@ -204,7 +213,7 @@ pub const Job = union(enum) {
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
-        warn("grabbing work: {}\n", .{self.*});
+        logger.log_fmt("grabbing work: {}\n", .{self.*});
         switch (self.*) {
             .print_msg => {
                 var stdout_file = std.io.getStdOut();
@@ -234,10 +243,10 @@ pub const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                warn("routing request to worker: {any}\n", .{outgoing_workers.items});
+                logger.log_fmt("routing request to worker: {any}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
                     if (out_worker.accepting() and out_worker.connection == conn) {
-                        warn("selected out_worker {}\n", .{out_worker});
+                        logger.log_fmt("selected out_worker {}\n", .{out_worker});
 
                         out_worker.send(request_msg.?);
 
@@ -246,7 +255,7 @@ pub const Job = union(enum) {
                 }
 
                 // If we get here nothing was sent, reschedule
-                warn("drop message: {}\n", .{self.*});
+                logger.log_fmt("drop message: {}\n", .{self.*});
                 // try enqueue(self.*);
             },
             .send_response => {
@@ -260,19 +269,19 @@ pub const Job = union(enum) {
 
                 try serialise_msg(response, response_msg.?);
 
-                warn("Sending response, guid {}, msg: {}\n", .{ guid, response_msg });
+                logger.log_fmt("Sending response, guid {}, msg: {}\n", .{ guid, response_msg });
                 for (incoming_workers) |w| {
                     if (w.guid == guid and w.state == .Wait) {
-                        warn("Found matching worker, sending response: {}\n", .{w});
+                        logger.log_fmt("Found matching worker, sending response: {}\n", .{w});
                         w.send(response_msg.?);
                         break;
                     }
                 } else {
-                    warn("Couldn't respond, guid: {any}, workers: {any}\n", .{ guid, incoming_workers });
+                    logger.log_fmt("Couldn't respond, guid: {any}, workers: {any}\n", .{ guid, incoming_workers });
                 }
             },
             .store => {
-                warn("store\n", .{});
+                logger.log_fmt("store\n", .{});
                 const key = self.store.key;
                 const value = self.store.value;
                 if (in_my_range(key)) //store here
@@ -281,10 +290,10 @@ pub const Job = union(enum) {
                 } else {}
             },
             .get => {
-                warn("get {}\n", .{self.get});
+                logger.log_fmt("get {}\n", .{self.get});
             },
             .handle_request => {
-                warn("handle request\n", .{});
+                logger.log_fmt("handle request\n", .{});
                 const guid = self.handle_request.guid;
                 const request = self.handle_request.enveloped;
                 const msg = self.handle_request.msg;
@@ -292,7 +301,7 @@ pub const Job = union(enum) {
                 try handle_request(guid, request, msg);
             },
             .bootstrap => {
-                warn("bootstrap: {any}\n", .{known_addresses.items});
+                logger.log_fmt("bootstrap: {any}\n", .{known_addresses.items});
                 var n = self.bootstrap.n;
                 if (known_addresses.items.len < n)
                     n = known_addresses.items.len;
@@ -304,7 +313,7 @@ pub const Job = union(enum) {
                 }
             },
             .connect => {
-                warn("connect\n", .{});
+                logger.log_fmt("connect\n", .{});
 
                 // Setup connection
                 var address = self.connect.address;
@@ -316,14 +325,14 @@ pub const Job = union(enum) {
                 try connections.append(conn);
 
                 // Create a worker
-                warn("connect on socket: {}\n", .{conn.socket});
+                logger.log_fmt("connect on socket: {}\n", .{conn.socket});
                 var out_worker = try OutWork.alloc(conn);
                 try outgoing_workers.append(out_worker);
 
                 const guid = defines.get_guid();
                 try self_guids.put(guid, true); //register that this guid is to be processed by us
                 const conn_guid = conn.guid;
-                try enqueue(Job{ .send_request = .{ .conn_guid = conn_guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid } } } });
+                try enqueue(Job{ .send_request = .{ .conn_guid = conn_guid, .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid, .port = my_port } } } });
             },
 
             .handle_response => {
@@ -362,18 +371,15 @@ pub const Job = union(enum) {
             },
             .manage_connections => {
                 //check if there are any connections
-                warn("Found {any} connections\n", .{connections.items});
-                if (connections.items.len == 0) {
-                    warn("no connections found, looking for more\n", .{});
-                    if (known_addresses.items.len == 0) {
-                        warn("No connections, no known addresses\n", .{});
-                        return;
-                    }
-                    const r = defines.rng.random.uintLessThan(usize, known_addresses.items.len);
-                    try enqueue(Job{
-                        .connect = .{ .address = known_addresses.items[r] },
-                    });
+                logger.log("Randomly connecting\n");
+                if (known_addresses.items.len == 0) {
+                    logger.log_fmt("No connections, no known addresses\n", .{});
+                    return;
                 }
+                const r = defines.rng.random.uintLessThan(usize, known_addresses.items.len);
+                try enqueue(Job{
+                    .connect = .{ .address = known_addresses.items[r] },
+                });
 
                 // Remove bad connections
                 var i: usize = 0;
@@ -408,10 +414,10 @@ fn event_queue_threadfunc(context: void) void {
     while (true) {
         if (event_queue.pop()) |*job| {
             job.work() catch |e| {
-                warn("Work Error: {}\n", .{e});
+                logger.log_fmt("Work Error: {}\n", .{e});
             };
         } else {
-            // warn("sleeping\n", .{});
+            // logger.log_fmt("sleeping\n", .{});
             c.nng_msleep(10);
         }
     }
@@ -469,40 +475,22 @@ pub fn is_zero(id: ID) bool {
     return true;
 }
 
-var log_file: std.fs.File = undefined;
-
-fn log(t: [:0]const u8) !void {
-    const bytes_written = try log_file.writeAll(t);
-}
-
-fn log_fmt(comptime template: anytype, args: anytype) !void {
-    const result = try std.fmt.allocPrint(allocator, template, args);
-    defer allocator.free(result);
-
-    const bytes_written = try log_file.writeAll(result);
-}
-
 fn init() !void {
+    try logger.init_log();
     defines.init();
 
-    warn("Init\n", .{});
+    logger.log_fmt("Init\n", .{});
     my_id = rand_id();
 
-    warn("My ID: {x}\n", .{std.fmt.fmtSliceHexLower(my_id[0..])});
+    logger.log_fmt("My ID: {x}\n", .{std.fmt.fmtSliceHexLower(my_id[0..])});
 
-    warn("Filling routing table\n", .{});
+    logger.log_fmt("Filling routing table\n", .{});
     var i: usize = 0;
     while (i < defines.ROUTING_TABLE_SIZE) : (i += 1) {
         var other_id = get_finger_id(my_id, i);
         try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID), .n_items = 0, .next_id = std.mem.zeroes(ID) });
-        warn("Finger table {}: {x}\n", .{ i, std.fmt.fmtSliceHexLower(other_id[0..]) });
+        logger.log_fmt("Finger table {}: {x}\n", .{ i, std.fmt.fmtSliceHexLower(other_id[0..]) });
     }
-
-    log_file = try std.fs.cwd().createFile(
-        "log_file.txt",
-        .{ .read = true },
-    );
-    // defer file.close();
 
     event_thread = try Thread.spawn(event_queue_threadfunc, {});
     timer_thread = try Thread.spawn(timer_threadfunc, {});
@@ -518,14 +506,14 @@ fn ceil_log2(n: usize) usize {
 
 //thread to periodically queue work
 fn timer_threadfunc(context: void) !void {
-    warn("Timer thread\n", .{});
+    logger.log_fmt("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(10000);
         try enqueue(Job{ .manage_connections = {} });
         c.nng_msleep(10000);
         try enqueue(Job{ .refresh_routing_table = {} });
 
-        warn("info, connections:{any}\n", .{connections.items});
+        logger.log_fmt("info, connections:{any}\n", .{connections.items});
     }
 }
 
@@ -535,17 +523,20 @@ pub fn main() !void {
     var args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    if (args.len < 2) {
-        std.debug.warn("usage: {s} <url>, eg url=tcp://localhost:8123\n", .{args[0]});
+    if (args.len < 3) {
+        logger.log_fmt("usage: {s} <url> <port> <connections>, eg url=tcp://localhost 1234 \n", .{args[0]});
         std.os.exit(1);
     }
 
     const address = try std.cstr.addNullByte(allocator, args[1]);
     defer allocator.free(address);
 
-    for (args[2..]) |out_addr| {
+    my_port = try std.fmt.parseInt(u16, args[2], 10);
+    logger.log_fmt("Setting up server, with ip: {s}, port: {}\n", .{ address, my_port });
+
+    for (args[3..]) |out_addr| {
         const out_addr_null = try std.cstr.addNullByte(allocator, out_addr);
-        warn("Adding {s} to known addresses\n", .{out_addr_null});
+        logger.log_fmt("Adding {s} to known addresses\n", .{out_addr_null});
         try known_addresses.append(out_addr_null);
     }
 
@@ -557,7 +548,7 @@ pub fn main() !void {
 
     try nng_ret(c.nng_listen(main_socket, address, 0, 0));
 
-    warn("listening on {s}", .{address});
+    logger.log_fmt("listening on {s}", .{address});
     for (incoming_workers) |w| {
         workers.inWorkCallback(w.toOpaque());
     }

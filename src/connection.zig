@@ -9,7 +9,7 @@ const nng_ret = @import("c.zig").nng_ret;
 const Guid = defines.Guid;
 const ID = defines.ID;
 const allocator = defines.allocator;
-
+const logger = @import("logger.zig");
 const warn = @import("std").debug.warn;
 
 const node = @import("node.zig");
@@ -52,19 +52,19 @@ pub fn init(self: *Connection, address: [:0]const u8) void {
 pub fn req_open(
     self: *Connection,
 ) !void {
-    warn("req open {s}\n", .{self.address});
+    logger.log_fmt("req open {s}\n", .{self.address});
     var r: c_int = undefined;
     try nng_ret(c.nng_req0_open(&self.socket));
 }
 
 pub fn rep_open(self: *Connection) !void {
-    warn("rep open {s}\n", .{self.address});
+    logger.log_fmt("rep open {s}\n", .{self.address});
     var r: c_int = undefined;
     try nng_ret(c.nng_rep0_open(&self.socket));
 }
 
 pub fn dial(self: *Connection) !void {
-    warn("dialing {s}\n", .{self.address});
+    logger.log_fmt("dialing {s}\n", .{self.address});
     try nng_ret(c.nng_dial(self.socket, self.address, 0, 0));
 }
 

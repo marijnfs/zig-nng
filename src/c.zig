@@ -1,4 +1,6 @@
 const std = @import("std");
+const logger = @import("logger.zig");
+
 pub const c = @cImport({
     @cInclude("nng/nng.h");
     @cInclude("nng/protocol/reqrep0/req.h");
@@ -10,7 +12,7 @@ pub const c = @cImport({
 
 pub fn nng_ret(code: c_int) !void {
     if (code != 0) {
-        std.debug.warn("nng_err: {s}\n", .{c.nng_strerror(code)});
+        logger.log_fmt("nng_err: {s}\n", .{c.nng_strerror(code)});
         return error.NNG;
     }
 }

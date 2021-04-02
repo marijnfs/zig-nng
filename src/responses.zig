@@ -1,5 +1,5 @@
 const std = @import("std");
-const warn = std.debug.warn;
+const logger = @import("logger.zig");
 
 const c = @import("c.zig").c;
 const nng_ret = @import("c.zig").nng_ret;
@@ -11,23 +11,23 @@ const node = @import("node.zig");
 const utils = @import("utils.zig");
 
 pub const Response = union(enum) {
-    ping_id: struct { conn_guid: Guid, id: ID, sockaddr: c.nng_sockaddr },
+    ping_id: struct { conn_guid: Guid, id: ID, inbound_sockaddr: c.nng_sockaddr, port: u16 },
     broadcast_confirm: usize,
     nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?[:0]u8 },
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {
-    warn("Response: {}\n", .{response});
+    logger.log_fmt("Response: {}\n", .{response});
 
     // check guid for chainable messages
     switch (response) {
         .ping_id, .nearest_peer => {
             var for_me: bool = node.self_guids.get(guid) != null;
             if (for_me) {
-                warn("message for me! {} {}", .{ guid, response });
+                logger.log_fmt("message for me! {} {}", .{ guid, response });
             } else {
-                warn("Passing message on, guid not for me: {} {}\n", .{ guid, response });
-                warn("{}\n", .{node.self_guids.count()});
+                logger.log_fmt("Passing message on, guid not for me: {} {}\n", .{ guid, response });
+                logger.log_fmt("{}\n", .{node.self_guids.count()});
                 try node.enqueue(node.Job{ .send_response = .{ .guid = guid, .enveloped = response } });
                 return;
             }
@@ -37,26 +37,38 @@ pub fn handle_response(guid: u64, response: Response) !void {
 
     switch (response) {
         .ping_id => {
-            warn("got resp ping id {}\n", .{response.ping_id});
+            // We got a ping response.
+            // The ping response is supposed to give us some information:
+            // 1. Our perceived IP address
+            // 2. The ID of the node we connected to
+            logger.log_fmt("got resp ping id {}\n", .{response.ping_id});
             const conn_guid = response.ping_id.conn_guid;
 
-            const port = false;
-            const my_addr_string = try utils.sockaddr_to_string(response.ping_id.sockaddr, port);
+            // Grab the perceived nng_sockaddr and retreive our supposed IP addr
+            var my_addr = response.ping_id.inbound_sockaddr;
+
+            // We hard set the port, since this is our inbound port, which is not known the the connecting node
+            my_addr.s_in.sa_port = @intCast(u16, node.my_port);
+            const add_port = true;
+            const my_addr_string = try utils.sockaddr_to_string(response.ping_id.inbound_sockaddr, add_port);
+
+            // Set our address
             node.my_address = my_addr_string;
+            logger.log_fmt("Setting perceived address to {s}\n", .{node.my_address});
             try node.self_addresses.put(my_addr_string, true);
 
+            // Set the ID of the connection point to the reveived ID
             var conn = try node.connection_by_guid(conn_guid);
             conn.id = response.ping_id.id;
-            warn("Set to id: {x}\n", .{std.fmt.fmtSliceHexLower(conn.id[0..])});
         },
         .broadcast_confirm => {
-            warn("got broadcast confirm\n", .{});
+            logger.log_fmt("got broadcast confirm\n", .{});
         },
         .nearest_peer => {
             var stdout_file = std.io.getStdOut();
             try stdout_file.writer().print("Got nearest peer info: {}", .{response});
 
-            warn("Got nearest peer info: {}", .{response});
+            logger.log_fmt("Got nearest peer info: {}", .{response});
         },
     }
 }

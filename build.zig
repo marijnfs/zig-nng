@@ -50,13 +50,6 @@ pub fn build(b: *Builder) void {
     exe_server.linkLibC();
     exe_server.install();
 
-    const exe_client = b.addExecutable("client", "src/client.zig");
-    exe_client.addIncludeDir("ext/nng/include");
-    exe_client.addIncludeDir("src");
-    exe_client.linkSystemLibrary("nng"); //Todo, link to locally build library
-    exe_client.linkLibC();
-    exe_client.install();
-
     const exe_node = b.addExecutable("node", "src/node.zig");
     exe_node.addIncludeDir("ext/nng/include");
     exe_node.addIncludeDir("src");

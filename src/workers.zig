@@ -1,5 +1,5 @@
 const std = @import("std");
-const warn = std.debug.warn;
+const logger = @import("logger.zig");
 
 const c = @import("c.zig").c;
 const nng_ret = @import("c.zig").nng_ret;
@@ -87,7 +87,7 @@ pub const OutWork = struct {
     }
 
     pub fn send(w: *OutWork, msg: *c.nng_msg) void {
-        warn("sending out\n", .{});
+        logger.log_fmt("sending out\n", .{});
         w.state = .Send;
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
@@ -115,12 +115,12 @@ pub const OutWork = struct {
 };
 
 pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
-    warn("inwork callback\n", .{});
+    logger.log_fmt("inwork callback\n", .{});
 
     const work = InWork.fromOpaque(arg);
 
     nng_ret(c.nng_aio_result(work.aio)) catch {
-        warn("error\n", .{});
+        logger.log_fmt("error\n", .{});
         work.state = .Error;
         return;
     };
@@ -128,7 +128,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
     switch (work.state) {
         .Error => {
             //disconnect
-            warn("In worker Error state\n", .{});
+            logger.log_fmt("In worker Error state\n", .{});
         },
         .Init => {
             c.nng_ctx_recv(work.ctx, work.aio);
@@ -140,7 +140,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             var msg_guid: Guid = 0;
             nng_ret(c.nng_msg_trim_u64(msg, &msg_guid)) catch |e| {
-                warn("Failed to trim incoming message: {}\n", .{e});
+                logger.log_fmt("Failed to trim incoming message: {}\n", .{e});
                 work.state = .Error;
                 return;
             };
@@ -151,7 +151,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             // We deserialise the message in a request
             const request = deserialise_msg(Request, msg.?) catch |e| {
-                warn("Failed to deserialise incoming request: {}\n", .{e});
+                logger.log_fmt("Failed to deserialise incoming request: {}\n", .{e});
                 work.state = .Error;
                 return;
             };
@@ -159,7 +159,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             // We handle the msg; we still pass on the nng_msg,
             // in case we need to query extra information
             enqueue(Job{ .handle_request = .{ .guid = msg_guid, .enveloped = request, .msg = msg.? } }) catch |e| {
-                warn("error: {}\n", .{e});
+                logger.log_fmt("error: {}\n", .{e});
             };
         },
 
@@ -171,18 +171,18 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = OutWork.fromOpaque(arg);
 
     nng_ret(c.nng_aio_result(work.aio)) catch {
-        warn("error\n", .{});
+        logger.log_fmt("error\n", .{});
         work.state = .Error;
         return;
     };
 
     switch (work.state) {
         .Error => {
-            warn("Outworker Error state\n", .{});
+            logger.log_fmt("Outworker Error state\n", .{});
         },
         .Ready => {},
         .Send => {
-            warn("out callback, calling recv\n", .{});
+            logger.log_fmt("out callback, calling recv\n", .{});
 
             c.nng_ctx_recv(work.ctx, work.aio);
             work.state = .Wait;
@@ -193,14 +193,14 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
             var guid: Guid = 0;
 
             nng_ret(c.nng_msg_trim_u64(msg, &guid)) catch {
-                warn("couldn't trim guid\n", .{});
+                logger.log_fmt("couldn't trim guid\n", .{});
                 work.state = .Error;
                 return;
             };
 
-            warn("outworker: response guid: {}\n", .{guid});
+            logger.log_fmt("outworker: response guid: {}\n", .{guid});
             const response = deserialise_msg(Response, msg.?) catch {
-                warn("couldn't deserialise msg\n", .{});
+                logger.log_fmt("couldn't deserialise msg\n", .{});
                 work.state = .Error;
                 return;
             };
@@ -213,7 +213,7 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
         },
 
         .Unconnected => {
-            warn("Callback on Unconnected\n", .{});
+            logger.log_fmt("Callback on Unconnected\n", .{});
         },
     }
 }

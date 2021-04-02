@@ -4,15 +4,15 @@ const allocator = defines.allocator;
 
 var log_file: std.fs.File = undefined;
 
-pub fn log(t: [:0]const u8) !void {
-    const bytes_written = try log_file.writeAll(t);
+pub fn log(t: [:0]const u8) void {
+    const bytes_written = log_file.writeAll(t) catch unreachable;
 }
 
-pub fn log_fmt(comptime template: anytype, args: anytype) !void {
-    const result = try std.fmt.allocPrint(allocator, template, args);
+pub fn log_fmt(comptime template: anytype, args: anytype) void {
+    const result = std.fmt.allocPrint(allocator, template, args) catch unreachable;
     defer allocator.free(result);
 
-    const bytes_written = try log_file.writeAll(result);
+    const bytes_written = log_file.writeAll(result) catch unreachable;
 }
 
 pub fn init_log() !void {
