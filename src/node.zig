@@ -8,6 +8,7 @@ const c = @import("c.zig").c;
 const AtomicQueue = @import("queue.zig").AtomicQueue;
 const nng_ret = @import("c.zig").nng_ret;
 const logger = @import("logger.zig");
+const model = @import("model.zig");
 
 const display = @import("display.zig");
 
@@ -48,6 +49,8 @@ var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
 // Known addresses to bootstrap
 pub var known_addresses = std.ArrayList([:0]u8).init(allocator);
 
+pub var line_buffer = std.ArrayList(u8).init(allocator);
+
 // Addresses to self
 // keep multiple, because they can change depending on locality
 pub var self_addresses = std.StringHashMap(bool).init(allocator);
@@ -59,8 +62,6 @@ pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator);
 // Guid filter to check messages to self (as opposed to passed on messages, which should be routed further)
 //
 pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter for self-addressed guids. Used to distinguish between messages to procress / pass on
-
-pub var messages = std.ArrayList([:0]u8).init(allocator);
 
 // Our routing table
 // Key's will be finger table base
@@ -205,23 +206,42 @@ pub const Job = union(enum) {
     send_request: RequestEnvelope,
     send_response: ResponseEnvelope,
 
-    handle_stdin_line: HandleStdinLine,
-    manage_connections: void,
-    refresh_routing_table: void,
+    // handle_stdin_line: HandleStdinLine,
+    process_key: []const u8,
 
-    print_msg: Message,
+    manage_connections: usize, //void has issues, so we use usize
+    refresh_routing_table: usize, //void has issues, so we use usize
+    redraw: usize, //void has issues, so we use usize
+    shutdown: usize, //void has issues, so we use usize
+
+    add_message: Message,
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
         logger.log_fmt("grabbing work: {}\n", .{self.*});
         switch (self.*) {
-            .print_msg => {
-                var stdout_file = std.io.getStdOut();
-                try stdout_file.writer().print("Msg: {s}\n", .{self.print_msg.content});
+            .add_message => |message| {
+                try model.add_message(message.content);
+
+                //broadcast it as well
+                const guid = defines.get_guid();
+                try self_guids.put(guid, true);
+                try enqueue(Job{
+                    .broadcast_msg = .{
+                        .guid = guid,
+                        .enveloped = .{ .content = message.content },
+                    },
+                });
+
+                try enqueue(Job{ .redraw = 0 });
             },
             .broadcast_msg => {
                 const message = self.broadcast_msg.enveloped;
                 const guid = self.broadcast_msg.guid;
+
+                // Add guid to seen guids
+                try guid_seen.put(guid, true);
+
                 for (connections.items) |conn| {
                     if (conn.state != .Disconnected and conn.id_known()) {
                         try enqueue(Job{ .send_request = .{ .conn_guid = conn.guid, .guid = guid, .enveloped = .{ .broadcast = .{ .content = message.content } } } });
@@ -340,35 +360,35 @@ pub const Job = union(enum) {
                 const response = self.handle_response.enveloped;
                 try handle_response(guid, response);
             },
-            .handle_stdin_line => {
-                // Process a typed line
-                // currently we look at the first word as a key
-                const buf = self.handle_stdin_line.buffer;
-                const space = std.mem.indexOf(u8, buf, " ");
-                if (space) |idx| {
-                    const key = buf[0..idx];
-                    const hash = calculate_hash(key);
-                    const value = buf[idx + 1 ..];
-                    if (std.mem.eql(u8, key, "store")) {
-                        try enqueue(Job{ .store = .{ .key = hash, .value = value } });
-                    } else {
-                        try enqueue(Job{ .print_msg = .{ .content = value } });
-                        const guid = defines.get_guid();
-                        try self_guids.put(guid, true);
-                        try enqueue(Job{
-                            .broadcast_msg = .{
-                                .guid = guid,
-                                .enveloped = .{ .content = value },
-                            },
-                        });
-                    }
-                } else {
-                    const key = buf;
-                    const hash = calculate_hash(key);
+            // .handle_stdin_line => {
+            //     // Process a typed line
+            //     // currently we look at the first word as a key
+            //     const buf = self.handle_stdin_line.buffer;
+            //     const space = std.mem.indexOf(u8, buf, " ");
+            //     if (space) |idx| {
+            //         const key = buf[0..idx];
+            //         const hash = calculate_hash(key);
+            //         const value = buf[idx + 1 ..];
+            //         if (std.mem.eql(u8, key, "store")) {
+            //             try enqueue(Job{ .store = .{ .key = hash, .value = value } });
+            //         } else {
+            //             try enqueue(Job{ .print_msg = .{ .content = value } });
+            //             const guid = defines.get_guid();
+            //             try self_guids.put(guid, true);
+            //             try enqueue(Job{
+            //                 .broadcast_msg = .{
+            //                     .guid = guid,
+            //                     .enveloped = .{ .content = value },
+            //                 },
+            //             });
+            //         }
+            //     } else {
+            //         const key = buf;
+            //         const hash = calculate_hash(key);
 
-                    try enqueue(Job{ .get = .{ .key = hash, .guid = 0 } });
-                }
-            },
+            //         try enqueue(Job{ .get = .{ .key = hash, .guid = 0 } });
+            //     }
+            // },
             .manage_connections => {
                 //check if there are any connections
                 logger.log("Randomly connecting\n");
@@ -405,6 +425,24 @@ pub const Job = union(enum) {
                     try self_guids.put(guid, true);
                     try enqueue(Job{ .send_request = .{ .conn_guid = connection.guid, .guid = guid, .enveloped = .{ .nearest_peer = find_id } } });
                 }
+            },
+            .shutdown => {
+                try display.deinit();
+                unreachable;
+            },
+            .process_key => |process_key| {
+                const key = process_key[0];
+
+                if (key == 13) { //Return Key
+                    try enqueue(Job{ .add_message = .{ .content = line_buffer.items } });
+                    try line_buffer.resize(0);
+                } else {
+                    try line_buffer.append(key);
+                }
+                try enqueue(Job{ .redraw = 0 });
+            },
+            .redraw => {
+                try display.draw();
             },
         }
     }
@@ -494,7 +532,7 @@ fn init() !void {
 
     event_thread = try Thread.spawn(event_queue_threadfunc, {});
     timer_thread = try Thread.spawn(timer_threadfunc, {});
-    read_lines_thread = try Thread.spawn(read_lines, {});
+    // read_lines_thread = try Thread.spawn(read_lines, {});
     try display.start_display_thread();
 }
 
@@ -509,9 +547,9 @@ fn timer_threadfunc(context: void) !void {
     logger.log_fmt("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(10000);
-        try enqueue(Job{ .manage_connections = {} });
+        try enqueue(Job{ .manage_connections = 0 });
         c.nng_msleep(10000);
-        try enqueue(Job{ .refresh_routing_table = {} });
+        try enqueue(Job{ .refresh_routing_table = 0 });
 
         logger.log_fmt("info, connections:{any}\n", .{connections.items});
     }

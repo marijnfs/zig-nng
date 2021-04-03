@@ -2,8 +2,11 @@ const std = @import("std");
 const zbox = @import("zbox");
 const page_allocator = std.heap.page_allocator;
 const model = @import("model.zig");
+const node = @import("node.zig");
 
 var display_thread: *std.Thread = undefined;
+var canvas: zbox.Buffer = undefined;
+var box: zbox.Buffer = undefined;
 
 fn process_key(cell: []const u8) void {
     if (cell.len > 1) {
@@ -15,6 +18,35 @@ fn process_key(cell: []const u8) void {
 
 pub fn start_display_thread() !void {
     display_thread = try std.Thread.spawn(display_loop, process_key);
+}
+
+pub fn deinit() !void {
+    const size = try zbox.size();
+    try canvas.resize(size.height, size.width);
+    canvas.clear();
+    try zbox.push(canvas);
+
+    zbox.deinit();
+}
+
+pub fn draw() !void {
+    // update the size of canvas buffer
+    const size = try zbox.size();
+    try canvas.resize(size.height, size.width);
+
+    box.clear();
+    box.fill(zbox.Cell{ .char = '-' });
+    var cursor = box.wrappedCursorAt(0, 0);
+    var writer = cursor.writer();
+
+    for (model.messages.items) |line| {
+        try writer.print("{s}\n", .{line});
+    }
+
+    canvas.clear();
+    canvas.blit(box, 5, 5);
+
+    try zbox.push(canvas);
 }
 
 pub fn display_loop(context: fn callback([]const u8) void) !void {
@@ -30,10 +62,10 @@ pub fn display_loop(context: fn callback([]const u8) void) !void {
     //setup our drawing buffer
     var size = try zbox.size();
 
-    var canvas = try zbox.Buffer.init(alloc, size.height, size.width);
+    canvas = try zbox.Buffer.init(alloc, size.height, size.width);
     defer canvas.deinit();
 
-    var box = try zbox.Buffer.init(alloc, 50, 50);
+    box = try zbox.Buffer.init(alloc, 50, 50);
     defer box.deinit();
 
     while (true) {
@@ -43,30 +75,16 @@ pub fn display_loop(context: fn callback([]const u8) void) !void {
                 continue;
             },
             .other => |other| {
-                process_key(other);
+                node.enqueue(node.Job{ .process_key = other }) catch unreachable;
             },
             .up => {},
             .down => {},
             .left => {},
             .right => {},
-            .escape => {},
+            .escape => {
+                node.enqueue(node.Job{ .shutdown = 0 }) catch unreachable;
+            },
         }
-
-        // update the size of canvas buffer
-        size = try zbox.size();
-        try canvas.resize(size.height, size.width);
-
-        box.clear();
-        box.fill(zbox.Cell{ .char = '-' });
-        var cursor = box.wrappedCursorAt(0, 0);
-        var writer = cursor.writer();
-        _ = try writer.print("event: {}\n", .{event});
-        canvas.clear();
-        canvas.blit(box, 5, 5);
-
-        try zbox.push(canvas);
-
-        // std.debug.warn("{}\n", .{event});
     }
 }
 

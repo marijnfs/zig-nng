@@ -72,8 +72,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
                 try node.enqueue(Job{ .send_request = .{ .conn_guid = nearest_conn.guid, .guid = guid, .enveloped = request } });
             }
         },
-        .broadcast => {
-            const message = request.broadcast;
+        .broadcast => |message| {
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = 0 } } });
 
             if (node.guid_seen.get(guid)) |seen| {
@@ -82,7 +81,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             } else {
                 try node.guid_seen.put(guid, true);
             }
-            try node.enqueue(Job{ .print_msg = .{ .content = message.content } });
+            try node.enqueue(Job{ .add_message = .{ .content = message.content } });
             try node.enqueue(Job{ .broadcast_msg = .{ .guid = guid, .enveloped = message } });
 
             logger.log_fmt("responding to guid {}\n", .{guid});
