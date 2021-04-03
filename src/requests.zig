@@ -82,7 +82,6 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
                 try node.guid_seen.put(guid, true);
             }
             try node.enqueue(Job{ .add_message = .{ .content = message.content } });
-            try node.enqueue(Job{ .broadcast_msg = .{ .guid = guid, .enveloped = message } });
 
             logger.log_fmt("responding to guid {}\n", .{guid});
         },
