@@ -8,16 +8,31 @@ var display_thread: *std.Thread = undefined;
 var canvas: zbox.Buffer = undefined;
 var box: zbox.Buffer = undefined;
 
-fn process_key(cell: []const u8) void {
-    if (cell.len > 1) {
-        return;
-    }
+const DrawMode = enum {
+    Messages,
+    Connection,
+    NDrawModes,
+};
 
-    if (cell[0] >= 'a' or cell[0] <= 'z') {}
+var draw_mode: DrawMode = .Messages;
+
+pub fn next_mode() void {
+    var int_val = @intCast(usize, @enumToInt(draw_mode));
+    int_val += 1;
+    int_val = int_val % @intCast(usize, @enumToInt(DrawMode.NDrawModes));
+    draw_mode = @intToEnum(DrawMode, @intCast(std.meta.Tag(DrawMode), int_val));
+}
+
+pub fn prev_mode() void {
+    var int_val = @intCast(i64, @enumToInt(draw_mode));
+    int_val -= 1;
+    if (int_val < 0)
+        int_val += @intCast(i64, @enumToInt(DrawMode.NDrawModes));
+    draw_mode = @intToEnum(DrawMode, @intCast(std.meta.Tag(DrawMode), int_val));
 }
 
 pub fn start_display_thread() !void {
-    display_thread = try std.Thread.spawn(display_loop, process_key);
+    display_thread = try std.Thread.spawn(display_loop, {});
 }
 
 pub fn deinit() !void {
@@ -39,17 +54,27 @@ pub fn draw() !void {
     var cursor = box.wrappedCursorAt(0, 0);
     var writer = cursor.writer();
 
-    for (model.messages.items) |line| {
-        try writer.print("{s}\n", .{line});
+    switch (draw_mode) {
+        .Messages => {
+            for (model.messages.items) |line| {
+                try writer.print("{s}\n", .{line});
+            }
+        },
+        .Connection => {
+            for (node.connections.items) |connection| {
+                try writer.print("addr:{s} id:{s}, n_workers:{}\n", .{ connection.address, connection.id, connection.n_workers });
+            }
+        },
+        .NDrawModes => {},
     }
 
     canvas.clear();
-    canvas.blit(box, 5, 5);
+    canvas.blit(box, 1, 4);
 
     try zbox.push(canvas);
 }
 
-pub fn display_loop(context: fn callback([]const u8) void) !void {
+pub fn display_loop(context: void) !void {
     var alloc = page_allocator;
 
     // initialize the zbox with stdin/out
@@ -77,8 +102,14 @@ pub fn display_loop(context: fn callback([]const u8) void) !void {
             .other => |other| {
                 node.enqueue(node.Job{ .process_key = other }) catch unreachable;
             },
-            .up => {},
-            .down => {},
+            .up => {
+                next_mode();
+                node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
+            },
+            .down => {
+                prev_mode();
+                node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
+            },
             .left => {},
             .right => {},
             .escape => {
