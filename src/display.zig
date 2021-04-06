@@ -54,6 +54,8 @@ pub fn draw() !void {
     var cursor = box.wrappedCursorAt(0, 0);
     var writer = cursor.writer();
 
+    try writer.print("draw:{}\n", .{draw_mode});
+
     switch (draw_mode) {
         .Messages => {
             for (model.messages.items) |line| {
@@ -61,8 +63,9 @@ pub fn draw() !void {
             }
         },
         .Connection => {
+            try writer.print("{any}\n", .{node.connections.items.len});
             for (node.connections.items) |connection| {
-                try writer.print("addr:{s} id:{s}, n_workers:{}\n", .{ connection.address, connection.id, connection.n_workers });
+                try writer.print("addr:{s} id:{s}, n_workers:{} state:{}\n", .{ connection.address, connection.id, connection.n_workers, connection.state });
             }
         },
         .NDrawModes => {},
