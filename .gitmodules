@@ -4,3 +4,6 @@
 [submodule "ext/zbox"]
 	path = ext/zbox
 	url = https://github.com/jessrud/zbox.git
+[submodule "ext/nng"]
+	path = ext/nng
+	url = https://github.com/marijnfs/nng.git
