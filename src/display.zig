@@ -3,10 +3,12 @@ const zbox = @import("zbox");
 const page_allocator = std.heap.page_allocator;
 const model = @import("model.zig");
 const node = @import("node.zig");
+const logger = @import("logger.zig");
 
 var display_thread: *std.Thread = undefined;
 var canvas: zbox.Buffer = undefined;
 var box: zbox.Buffer = undefined;
+var error_box: zbox.Buffer = undefined;
 
 const DrawMode = enum {
     Messages,
@@ -14,7 +16,10 @@ const DrawMode = enum {
     NDrawModes,
 };
 
+var focus_row: usize = 0;
+
 var draw_mode: DrawMode = .Messages;
+var error_cursor = error_box.wrappedCursorAt(0, 0);
 
 pub fn next_mode() void {
     var int_val = @intCast(usize, @enumToInt(draw_mode));
@@ -33,6 +38,11 @@ pub fn prev_mode() void {
 
 pub fn start_display_thread() !void {
     display_thread = try std.Thread.spawn(display_loop, {});
+}
+
+pub fn error_writer() zbox.Buffer.Writer {
+    var writer = error_cursor.writer();
+    return writer;
 }
 
 pub fn deinit() !void {
@@ -72,7 +82,8 @@ pub fn draw() !void {
     }
 
     canvas.clear();
-    canvas.blit(box, 1, 4);
+    canvas.blit(box, 0, 4);
+    canvas.blitFrom(error_box, 10, 4, focus_row, 0);
 
     try zbox.push(canvas);
 }
@@ -86,14 +97,17 @@ pub fn display_loop(context: void) !void {
 
     // die on ctrl+C
     try zbox.handleSignalInput();
-
+    // try zbox.ignoreSignalInput();
     //setup our drawing buffer
     var size = try zbox.size();
 
     canvas = try zbox.Buffer.init(alloc, size.height, size.width);
     defer canvas.deinit();
 
-    box = try zbox.Buffer.init(alloc, 50, 50);
+    box = try zbox.Buffer.init(alloc, 100, 50);
+    defer box.deinit();
+
+    error_box = try zbox.Buffer.init(alloc, 100, 50);
     defer box.deinit();
 
     while (true) {
@@ -106,15 +120,22 @@ pub fn display_loop(context: void) !void {
                 node.enqueue(node.Job{ .process_key = other }) catch unreachable;
             },
             .up => {
-                next_mode();
+                if (focus_row > 0)
+                    focus_row -= 1;
                 node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
             },
             .down => {
+                focus_row += 1;
+                node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
+            },
+            .left => {
                 prev_mode();
                 node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
             },
-            .left => {},
-            .right => {},
+            .right => {
+                next_mode();
+                node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
+            },
             .escape => {
                 node.enqueue(node.Job{ .shutdown = 0 }) catch unreachable;
             },

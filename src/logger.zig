@@ -1,18 +1,21 @@
 const std = @import("std");
 const defines = @import("defines.zig");
 const allocator = defines.allocator;
+const display = @import("display.zig");
 
 var log_file: std.fs.File = undefined;
 
 pub fn log(t: [:0]const u8) void {
-    const bytes_written = log_file.writeAll(t) catch unreachable;
+    _ = log_file.writeAll(t) catch unreachable;
+    _ = display.error_writer().write(t) catch unreachable;
 }
 
 pub fn log_fmt(comptime template: anytype, args: anytype) void {
-    const result = std.fmt.allocPrint(allocator, template, args) catch unreachable;
-    defer allocator.free(result);
+    const error_fmt = std.fmt.allocPrint(allocator, template, args) catch unreachable;
+    defer allocator.free(error_fmt);
 
-    const bytes_written = log_file.writeAll(result) catch unreachable;
+    _ = log_file.writeAll(error_fmt) catch unreachable;
+    _ = display.error_writer().write(error_fmt) catch unreachable;
 }
 
 pub fn init_log() !void {

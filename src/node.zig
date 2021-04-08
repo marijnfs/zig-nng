@@ -218,7 +218,7 @@ pub const Job = union(enum) {
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
-        logger.log_fmt("grabbing work: {}\n", .{self.*});
+        logger.log_fmt("run job: {}\n", .{self.*});
         switch (self.*) {
             .add_message => |message| {
                 try model.add_message(message.content);
@@ -455,7 +455,6 @@ fn event_queue_threadfunc(context: void) void {
                 logger.log_fmt("Work Error: {}\n", .{e});
             };
         } else {
-            // logger.log_fmt("sleeping\n", .{});
             c.nng_msleep(10);
         }
     }
