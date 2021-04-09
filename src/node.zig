@@ -63,6 +63,18 @@ pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator);
 //
 pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter for self-addressed guids. Used to distinguish between messages to procress / pass on
 
+pub fn address_is_connected() bool {
+    // Setup connection
+    var address = self.connect.address;
+    for (connections.items) |connection| {
+        if (std.mem.eql(u8, connection.address, address)) {
+            logger.log_fmt("already connecting, skipping {s}\n", .{address});
+            return true;
+        }
+    }
+    return false;
+}
+
 // Our routing table
 // Key's will be finger table base
 // Values will be actual peers
@@ -70,10 +82,8 @@ pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter 
 const PeerInfo = struct {
     id: ID, //ID of the peer
     address: ?[:0]u8 = undefined, //connection end point to connect to this peer
-    n_items: usize, //number of items this node stores (in it's proper range, not including auxiliary items); used for #items estimation
-    next_id: ID, //Nearest id to this node; used for #nodes estimation
 };
-var routing_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
+var finger_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
 // Our connections
 pub var connections = std.ArrayList(*Connection).init(allocator);
@@ -210,7 +220,7 @@ pub const Job = union(enum) {
     process_key: []const u8,
 
     manage_connections: usize, //void has issues, so we use usize
-    refresh_routing_table: usize, //void has issues, so we use usize
+    refresh_finger_table: usize, //void has issues, so we use usize
     redraw: usize, //void has issues, so we use usize
     shutdown: usize, //void has issues, so we use usize
 
@@ -336,6 +346,13 @@ pub const Job = union(enum) {
 
                 // Setup connection
                 var address = self.connect.address;
+                for (connections.items) |connection| {
+                    if (std.mem.eql(u8, connection.address, address)) {
+                        logger.log_fmt("already connecting, skipping {s}\n", .{address});
+                        return;
+                    }
+                }
+
                 var conn = try Connection.alloc();
                 conn.init(address);
                 try conn.req_open();
@@ -359,46 +376,11 @@ pub const Job = union(enum) {
                 const response = self.handle_response.enveloped;
                 try handle_response(guid, response);
             },
-            // .handle_stdin_line => {
-            //     // Process a typed line
-            //     // currently we look at the first word as a key
-            //     const buf = self.handle_stdin_line.buffer;
-            //     const space = std.mem.indexOf(u8, buf, " ");
-            //     if (space) |idx| {
-            //         const key = buf[0..idx];
-            //         const hash = calculate_hash(key);
-            //         const value = buf[idx + 1 ..];
-            //         if (std.mem.eql(u8, key, "store")) {
-            //             try enqueue(Job{ .store = .{ .key = hash, .value = value } });
-            //         } else {
-            //             try enqueue(Job{ .print_msg = .{ .content = value } });
-            //             const guid = defines.get_guid();
-            //             try self_guids.put(guid, true);
-            //             try enqueue(Job{
-            //                 .broadcast_msg = .{
-            //                     .guid = guid,
-            //                     .enveloped = .{ .content = value },
-            //                 },
-            //             });
-            //         }
-            //     } else {
-            //         const key = buf;
-            //         const hash = calculate_hash(key);
-
-            //         try enqueue(Job{ .get = .{ .key = hash, .guid = 0 } });
-            //     }
-            // },
             .manage_connections => {
-                //check if there are any connections
-                logger.log("Randomly connecting\n");
-                if (known_addresses.items.len == 0) {
-                    logger.log_fmt("No connections, no known addresses\n", .{});
-                    return;
-                }
-                const r = defines.rng.random.uintLessThan(usize, known_addresses.items.len);
-                try enqueue(Job{
-                    .connect = .{ .address = known_addresses.items[r] },
-                });
+                // connect to items in fingers
+                var it = finger_table.iterator();
+                while (it.next()) |kv| {}
+                // disconnect to things not in finters
 
                 // Remove bad connections
                 var i: usize = 0;
@@ -411,10 +393,10 @@ pub const Job = union(enum) {
                     }
                 }
             },
-            .refresh_routing_table => {
+            .refresh_finger_table => {
                 // The routing table is a hash map, with desired finger IDs as keys, and the closest matches as values
                 // We periodially
-                var it = routing_table.iterator();
+                var it = finger_table.iterator();
                 while (it.next()) |kv| {
                     const find_id = kv.key;
                     const connection = connection_by_nearest_id(find_id) catch {
@@ -518,7 +500,7 @@ fn init() !void {
     var i: usize = 0;
     while (i < defines.ROUTING_TABLE_SIZE) : (i += 1) {
         var other_id = get_finger_id(my_id, i);
-        try routing_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID), .n_items = 0, .next_id = std.mem.zeroes(ID) });
+        try finger_table.put(other_id, PeerInfo{ .id = std.mem.zeroes(ID) });
         logger.log_fmt("Finger table {}: {x}\n", .{ i, std.fmt.fmtSliceHexLower(other_id[0..]) });
     }
 
@@ -539,9 +521,10 @@ fn timer_threadfunc(context: void) !void {
     logger.log_fmt("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(10000);
+        try enqueue(Job{ .bootstrap = .{ .n = 4 } });
         try enqueue(Job{ .manage_connections = 0 });
         c.nng_msleep(10000);
-        try enqueue(Job{ .refresh_routing_table = 0 });
+        try enqueue(Job{ .refresh_finger_table = 0 });
 
         logger.log_fmt("info, connections:{any}\n", .{connections.items});
     }
