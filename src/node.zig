@@ -491,12 +491,6 @@ pub fn in_my_range(id: ID) bool {
     return less(id, closest_distance);
 }
 
-pub fn calculate_hash(data: []const u8) ID {
-    var result: ID = undefined;
-    std.crypto.hash.Blake3.hash(data, result[0..], .{});
-    return result;
-}
-
 pub fn rand_id() ID {
     var id: ID = undefined;
     std.crypto.random.bytes(&id);
@@ -590,6 +584,7 @@ pub fn main() !void {
     }
 
     try enqueue(Job{ .bootstrap = .{ .n = 4 } });
+    try enqueue(Job{ .redraw = 0 });
 
     event_thread.wait();
 }

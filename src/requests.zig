@@ -78,6 +78,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             if (node.guid_seen.get(guid)) |seen| {
                 return;
             } else {
+                try node.guid_seen.put(guid, true);
                 try node.enqueue(Job{ .add_message_to_model = .{ .content = message.content } });
             }
         },

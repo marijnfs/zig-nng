@@ -9,6 +9,12 @@ const Guid = defines.Guid;
 const ID = defines.ID;
 const allocator = defines.allocator;
 
+pub fn calculate_hash(data: []const u8) ID {
+    var result: ID = undefined;
+    std.crypto.hash.Blake3.hash(data, result[0..], .{});
+    return result;
+}
+
 pub fn sockaddr_to_string(sockaddr: c.nng_sockaddr, with_port: bool) ![:0]u8 {
     const fam = sockaddr.s_family;
 
