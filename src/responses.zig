@@ -65,9 +65,6 @@ pub fn handle_response(guid: u64, response: Response) !void {
             logger.log_fmt("got broadcast confirm\n", .{});
         },
         .nearest_peer => {
-            var stdout_file = std.io.getStdOut();
-            try stdout_file.writer().print("Got nearest peer info: {}", .{response});
-
             logger.log_fmt("Got nearest peer info: {}", .{response});
         },
     }

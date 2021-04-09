@@ -74,16 +74,12 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
         },
         .broadcast => |message| {
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = 0 } } });
-
+            try node.enqueue(Job{ .broadcast_msg = .{ .guid = guid, .enveloped = message } });
             if (node.guid_seen.get(guid)) |seen| {
-                logger.log_fmt("already saw message, not broadcasting\n", .{});
                 return;
             } else {
-                try node.guid_seen.put(guid, true);
+                try node.enqueue(Job{ .add_message_to_model = .{ .content = message.content } });
             }
-            try node.enqueue(Job{ .add_message = .{ .content = message.content } });
-
-            logger.log_fmt("responding to guid {}\n", .{guid});
         },
     }
 }

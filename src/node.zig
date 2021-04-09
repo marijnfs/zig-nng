@@ -214,32 +214,31 @@ pub const Job = union(enum) {
     redraw: usize, //void has issues, so we use usize
     shutdown: usize, //void has issues, so we use usize
 
-    add_message: Message,
+    add_message_to_model: Message,
+    introduce_message: Message,
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
         logger.log_fmt("run job: {}\n", .{self.*});
         switch (self.*) {
-            .add_message => |message| {
-                try model.add_message(message.content);
-
-                //broadcast it as well
+            .introduce_message => |message| {
                 const guid = defines.get_guid();
-                try self_guids.put(guid, true);
-                try enqueue(Job{
-                    .broadcast_msg = .{
-                        .guid = guid,
-                        .enveloped = .{ .content = message.content },
-                    },
-                });
 
+                try enqueue(Job{ .add_message_to_model = message });
+                try enqueue(Job{ .broadcast_msg = .{ .guid = guid, .enveloped = message } });
+            },
+            .add_message_to_model => |message| {
+                try model.add_message(message.content);
                 try enqueue(Job{ .redraw = 0 });
             },
             .broadcast_msg => {
                 const message = self.broadcast_msg.enveloped;
                 const guid = self.broadcast_msg.guid;
 
-                // Add guid to seen guids
+                // Check if broadcasted already, Dont broadcast again
+                if (guid_seen.get(guid)) |seen| {
+                    return;
+                }
                 try guid_seen.put(guid, true);
 
                 for (connections.items) |conn| {
@@ -434,7 +433,7 @@ pub const Job = union(enum) {
                 const key = process_key[0];
 
                 if (key == 13) { //Return Key
-                    try enqueue(Job{ .add_message = .{ .content = line_buffer.items } });
+                    try enqueue(Job{ .introduce_message = .{ .content = line_buffer.items } });
                     try line_buffer.resize(0);
                 } else {
                     try line_buffer.append(key);
@@ -455,7 +454,7 @@ fn event_queue_threadfunc(context: void) void {
                 logger.log_fmt("Work Error: {}\n", .{e});
             };
         } else {
-            c.nng_msleep(10);
+            c.nng_msleep(100);
         }
     }
 }

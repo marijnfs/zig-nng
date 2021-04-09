@@ -75,7 +75,8 @@ pub fn draw() !void {
         .Connection => {
             try writer.print("{any}\n", .{node.connections.items.len});
             for (node.connections.items) |connection| {
-                try writer.print("addr:{s} id:{s}, n_workers:{} state:{}\n", .{ connection.address, connection.id, connection.n_workers, connection.state });
+                std.debug.warn("addr:{s} id:{s}, n_workers:{} state:{}\n", .{ connection.address, std.fmt.fmtSliceHexLower(connection.id[0..]), connection.n_workers, connection.state });
+                // try writer.print("addr:{s} id:{s}, n_workers:{} state:{}\n", .{ connection.address, connection.id, connection.n_workers, connection.state });
             }
         },
         .NDrawModes => {},
