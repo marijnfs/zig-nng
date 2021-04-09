@@ -1,5 +1,43 @@
+Recently:
+========
+- Seperate guid and hash map to make message filtering easier
+  - guid is for broadcasting only atm
+- 
+
+
 Next
 ====
+- network size estimate
+  - nodes
+  - items
+
+- create 'ensure map', key, value pairs
+  - a key can be without value, we need to request it
+  - key can have dependents, they will be added to ensure (but noted by dependency)
+    - procedure:
+      - add key to ensure map
+      - stuff will automatically be filled in
+      - can either poll state, or register some Job
+
+- introduce ring-slice bloom sync
+  
+- introduce ring redundancy with 2^n masking
+  - each stores certain mask rings
+  - request can use mask to query masked recepient
+  - get procedure: try regular first, then masked increasingly
+  
+- introduce ring-slice
+  - can be put in an updater that keeps it up to date
+  - can give 'signals' when something is new
+  - can 'easily' change range, multiple ring slices can be added
+    - reuses what it already has, automatically gets rest
+
+- currently somehow we keep adding connections to incoming nodes.
+- implement finger table with:
+  - regular syncing with adding connections
+  - requesting of fingers
+  - dealing with closing redundant / failing connections
+
 - Probably Unify InWorker / OutWorker
   - both just send and receive, with waiting moments
 
@@ -13,12 +51,6 @@ Next
 - GetItem, //retrieve an item
 - Store, // Store command -> check hash to be sure.
 
-- handle_response needs work, deal with many responses.
-- handle_request same
-- deal with freakin return values of nng.
-- serialization needs work,
-	- struct serialisation / deserialisation.
-	- package definition should be shared and reused.
 - Make work for 2 user scenario
 	- for local tcp
 	- perhaps also for others (inproc? natural multicore)
