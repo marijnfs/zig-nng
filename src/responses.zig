@@ -64,8 +64,21 @@ pub fn handle_response(guid: u64, response: Response) !void {
         .broadcast_confirm => {
             logger.log_fmt("got broadcast confirm\n", .{});
         },
-        .nearest_peer => {
+        .nearest_peer => |nearest_peer| {
             logger.log_fmt("Got nearest peer info: {}", .{response});
+
+            if (nearest_peer.address) |address| {
+                const search_id = nearest_peer.search_id;
+                const reported_id = nearest_peer.nearest_id;
+
+                // first verify we actually asked this search id
+                if (node.finger_table.get(search_id)) |_| {} else {
+                    logger.log_fmt("got peer info with unrequested search id: {any}\n", .{search_id});
+                    return;
+                }
+
+                try node.finger_table.put(search_id, .{ .id = reported_id, .address = address });
+            }
         },
     }
 }

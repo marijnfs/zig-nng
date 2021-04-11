@@ -64,7 +64,7 @@ pub fn draw() !void {
     var cursor = box.wrappedCursorAt(0, 0);
     var writer = cursor.writer();
 
-    try writer.print("draw:{}\n", .{draw_mode});
+    try writer.print("mode:{}\n", .{draw_mode});
 
     switch (draw_mode) {
         .Messages => {
@@ -104,10 +104,10 @@ pub fn display_loop(context: void) !void {
     canvas = try zbox.Buffer.init(alloc, size.height, size.width);
     defer canvas.deinit();
 
-    box = try zbox.Buffer.init(alloc, 100, 50);
+    box = try zbox.Buffer.init(alloc, 9999, 50);
     defer box.deinit();
 
-    error_box = try zbox.Buffer.init(alloc, 100, 50);
+    error_box = try zbox.Buffer.init(alloc, 9999, 50);
     defer box.deinit();
 
     while (true) {

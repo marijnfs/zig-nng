@@ -26,7 +26,7 @@ pub fn sockaddr_to_string(sockaddr: c.nng_sockaddr, with_port: bool) ![:0]u8 {
         if (!with_port) {
             return try std.fmt.allocPrintZ(allocator, "tcp://{}.{}.{}.{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3] });
         } else {
-            return try std.fmt.allocPrintZ(allocator, "{}.{}.{}.{}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
+            return try std.fmt.allocPrintZ(allocator, "tcp://{}.{}.{}.{}:{}", .{ addr_ptr[0], addr_ptr[1], addr_ptr[2], addr_ptr[3], ipv4.sa_port });
         }
     }
     if (fam == c.NNG_AF_INET6) {

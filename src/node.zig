@@ -63,18 +63,6 @@ pub var guid_seen = std.AutoHashMap(Guid, bool).init(allocator);
 //
 pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter for self-addressed guids. Used to distinguish between messages to procress / pass on
 
-pub fn address_is_connected() bool {
-    // Setup connection
-    var address = self.connect.address;
-    for (connections.items) |connection| {
-        if (std.mem.eql(u8, connection.address, address)) {
-            logger.log_fmt("already connecting, skipping {s}\n", .{address});
-            return true;
-        }
-    }
-    return false;
-}
-
 // Our routing table
 // Key's will be finger table base
 // Values will be actual peers
@@ -83,7 +71,7 @@ const PeerInfo = struct {
     id: ID, //ID of the peer
     address: ?[:0]u8 = undefined, //connection end point to connect to this peer
 };
-var finger_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
+pub var finger_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
 // Our connections
 pub var connections = std.ArrayList(*Connection).init(allocator);
@@ -181,6 +169,26 @@ pub fn connection_by_nearest_id(id: ID) !*Connection {
     return nearest_conn;
 }
 
+pub fn is_self_address(address: []u8) bool {
+    var it = self_addresses.iterator();
+    while (it.next()) |kv| {
+        const self_address = kv.key;
+        if (std.mem.eql(u8, address, self_address)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+pub fn address_is_connected(address: []u8) bool {
+    for (connections.items) |conn| {
+        if (std.mem.eql(u8, address, conn.address)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Rudimentary console
 fn read_lines(context: void) !void {
     logger.log_fmt("Console started\n", .{});
@@ -200,7 +208,7 @@ fn read_lines(context: void) !void {
 }
 
 pub fn enqueue(job: Job) !void {
-    logger.log_fmt("queuing job: {}\n", .{job});
+    // logger.log_fmt("queuing job: {}\n", .{job});
     try event_queue.push(job);
 }
 
@@ -223,13 +231,16 @@ pub const Job = union(enum) {
     refresh_finger_table: usize, //void has issues, so we use usize
     redraw: usize, //void has issues, so we use usize
     shutdown: usize, //void has issues, so we use usize
+    sync_finger_table: usize, //void has issues
 
     add_message_to_model: Message,
     introduce_message: Message,
     broadcast_msg: Envelope(Message),
 
     fn work(self: *Job) !void {
-        logger.log_fmt("run job: {}\n", .{self.*});
+
+        // logger.log_fmt("run job: {}\n", .{self.*});
+
         switch (self.*) {
             .introduce_message => |message| {
                 const guid = defines.get_guid();
@@ -377,9 +388,6 @@ pub const Job = union(enum) {
                 try handle_response(guid, response);
             },
             .manage_connections => {
-                // connect to items in fingers
-                var it = finger_table.iterator();
-                while (it.next()) |kv| {}
                 // disconnect to things not in finters
 
                 // Remove bad connections
@@ -405,6 +413,31 @@ pub const Job = union(enum) {
                     const guid = defines.get_guid();
                     try self_guids.put(guid, true);
                     try enqueue(Job{ .send_request = .{ .conn_guid = connection.guid, .guid = guid, .enveloped = .{ .nearest_peer = find_id } } });
+                }
+            },
+            .sync_finger_table => {
+                // connect to items in fingers
+                var temp_hash_map = std.StringHashMap(bool).init(allocator);
+                defer temp_hash_map.deinit();
+
+                var it = finger_table.iterator();
+                while (it.next()) |kv| {
+                    if (kv.value.address) |address| {
+                        if (address_is_connected(address) or is_self_address(address)) {
+                            // address is already connected
+                            logger.log_fmt("not adding nearest peer address: {s}\n", .{address});
+                            continue;
+                        }
+
+                        if (temp_hash_map.get(address)) |_| {
+                            // already requested
+                        } else {
+                            logger.log_fmt("Requesting peer connection to: {s}\n", .{address});
+
+                            try enqueue(Job{ .connect = .{ .address = address } });
+                            try temp_hash_map.put(address, true);
+                        }
+                    }
                 }
             },
             .shutdown => {
@@ -520,11 +553,13 @@ fn ceil_log2(n: usize) usize {
 fn timer_threadfunc(context: void) !void {
     logger.log_fmt("Timer thread\n", .{});
     while (true) {
-        c.nng_msleep(10000);
+        c.nng_msleep(4000);
         try enqueue(Job{ .bootstrap = .{ .n = 4 } });
         try enqueue(Job{ .manage_connections = 0 });
-        c.nng_msleep(10000);
+        c.nng_msleep(4000);
         try enqueue(Job{ .refresh_finger_table = 0 });
+        c.nng_msleep(4000);
+        try enqueue(Job{ .sync_finger_table = 0 });
 
         logger.log_fmt("info, connections:{any}\n", .{connections.items});
     }
