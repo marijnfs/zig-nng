@@ -13,6 +13,8 @@ var error_box: zbox.Buffer = undefined;
 const DrawMode = enum {
     Messages,
     Connection,
+    FingerTable,
+    KnownAddresses,
     NDrawModes,
 };
 
@@ -73,16 +75,33 @@ pub fn draw() !void {
             }
         },
         .Connection => {
-            try writer.print("{any}\n", .{node.connections.items.len});
+            try writer.print("My id: {s}, conn:\n", .{std.fmt.fmtSliceHexLower(node.my_id[0..])});
             for (node.connections.items) |connection| {
                 try writer.print("addr:{s} id:{s}, n_workers:{} state:{}\n", .{ connection.address, std.fmt.fmtSliceHexLower(connection.id[0..]), connection.n_workers, connection.state });
+            }
+        },
+        .KnownAddresses => {
+            for (node.known_addresses.items) |addr| {
+                try writer.print("addr:{s}\n", .{addr});
+            }
+        },
+        .FingerTable => {
+            var it = node.finger_table.iterator();
+            while (it.next()) |finger| {
+                const base_id = finger.key;
+                const id = finger.value.id;
+                if (finger.value.address) |address| {
+                    try writer.print("base:{s} id:{s} addr:{s}\n", .{ std.fmt.fmtSliceHexLower(base_id[0..]), std.fmt.fmtSliceHexLower(id[0..]), address });
+                } else {
+                    try writer.print("base:{s} id:{s}\n", .{ std.fmt.fmtSliceHexLower(base_id[0..]), std.fmt.fmtSliceHexLower(base_id[0..]) });
+                }
             }
         },
         .NDrawModes => {},
     }
 
     canvas.clear();
-    canvas.blit(box, 0, 4);
+    canvas.blitFrom(box, 0, 4, focus_row, 0);
     canvas.blitFrom(error_box, 10, 4, focus_row, 0);
 
     try zbox.push(canvas);

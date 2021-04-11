@@ -8,6 +8,7 @@ const nng_ret = @import("c.zig").nng_ret;
 
 const Guid = defines.Guid;
 const ID = defines.ID;
+const Address = defines.Address;
 const allocator = defines.allocator;
 const logger = @import("logger.zig");
 const warn = @import("std").debug.warn;
@@ -20,7 +21,7 @@ pub const State = enum {
 };
 
 guid: Guid,
-address: [:0]const u8,
+address: Address,
 
 id: ID = undefined,
 n_workers: usize = 0,
@@ -40,7 +41,7 @@ pub fn free(self: *Connection) void {
     allocator.destroy(self);
 }
 
-pub fn init(self: *Connection, address: [:0]const u8) void {
+pub fn init(self: *Connection, address: Address) void {
     self.* = Connection{
         .address = address,
         .guid = defines.get_guid(),

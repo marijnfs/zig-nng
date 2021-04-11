@@ -7,13 +7,15 @@ const nng_ret = @import("c.zig").nng_ret;
 const defines = @import("defines.zig");
 const Guid = defines.Guid;
 const ID = defines.ID;
+const Address = defines.Address;
+
 const node = @import("node.zig");
 const utils = @import("utils.zig");
 
 pub const Response = union(enum) {
     ping_id: struct { conn_guid: Guid, id: ID, inbound_sockaddr: c.nng_sockaddr, port: u16 },
     broadcast_confirm: usize,
-    nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?[:0]u8 },
+    nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?Address },
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {

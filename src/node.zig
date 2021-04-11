@@ -16,6 +16,7 @@ const defines = @import("defines.zig");
 const Guid = defines.Guid;
 const ID = defines.ID;
 const Block = defines.Block;
+const Address = defines.Address;
 const allocator = defines.allocator;
 
 const serialise_msg = @import("serialise.zig").serialise_msg;
@@ -27,7 +28,7 @@ const OutWork = workers.OutWork;
 
 // Guid that will be used to signify self-id
 pub var my_id: ID = std.mem.zeroes(ID);
-pub var my_address: ?[:0]u8 = undefined;
+pub var my_address: ?Address = undefined;
 pub var my_port: u16 = 0;
 
 var nearest_ID: ID = std.mem.zeroes(ID);
@@ -44,10 +45,10 @@ var read_lines_thread: *Thread = undefined;
 var database = std.AutoHashMap(ID, Block).init(allocator);
 
 // Map holding ID -> Map
-var peers = std.AutoHashMap(ID, [:0]u8).init(allocator);
+var peers = std.AutoHashMap(ID, Address).init(allocator);
 
 // Known addresses to bootstrap
-pub var known_addresses = std.ArrayList([:0]u8).init(allocator);
+pub var known_addresses = std.ArrayList(Address).init(allocator);
 
 pub var line_buffer = std.ArrayList(u8).init(allocator);
 
@@ -69,7 +70,7 @@ pub var self_guids = std.AutoHashMap(Guid, bool).init(allocator); //Guid filter 
 // Will be periodically updated and queried to make actual connection
 const PeerInfo = struct {
     id: ID, //ID of the peer
-    address: ?[:0]u8 = undefined, //connection end point to connect to this peer
+    address: ?Address = undefined, //connection end point to connect to this peer
 };
 pub var finger_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 
@@ -95,14 +96,6 @@ const GuidKeyValue = struct {
     guid: u64 = 0, //source of request
     key: ID,
     value: ?[]u8 = undefined,
-};
-
-const Bootstrap = struct {
-    n: usize,
-};
-
-const Connect = struct {
-    address: [:0]const u8,
 };
 
 fn OutEnvelope(comptime T: type) type {
@@ -180,7 +173,7 @@ pub fn is_self_address(address: []u8) bool {
     return false;
 }
 
-pub fn address_is_connected(address: []u8) bool {
+pub fn address_is_connected(address: Address) bool {
     for (connections.items) |conn| {
         if (std.mem.eql(u8, address, conn.address)) {
             return true;
@@ -213,10 +206,10 @@ pub fn enqueue(job: Job) !void {
 }
 
 pub const Job = union(enum) {
-    connect: Connect,
+    connect: Address,
     store: GuidKeyValue,
     get: GuidKeyValue,
-    bootstrap: Bootstrap,
+    bootstrap: usize,
 
     handle_request: RequestEnvelope,
     handle_response: ResponseEnvelope,
@@ -342,26 +335,23 @@ pub const Job = union(enum) {
             },
             .bootstrap => {
                 logger.log_fmt("bootstrap: {any}\n", .{known_addresses.items});
-                var n = self.bootstrap.n;
+                var n = self.bootstrap;
                 if (known_addresses.items.len < n)
                     n = known_addresses.items.len;
 
                 var i: usize = 0;
                 while (i < n) : (i += 1) {
                     var address = known_addresses.items[i];
-                    try enqueue(Job{ .connect = .{ .address = address } });
+                    try enqueue(Job{ .connect = address });
                 }
             },
-            .connect => {
+            .connect => |address| {
                 logger.log_fmt("connect\n", .{});
 
                 // Setup connection
-                var address = self.connect.address;
-                for (connections.items) |connection| {
-                    if (std.mem.eql(u8, connection.address, address)) {
-                        logger.log_fmt("already connecting, skipping {s}\n", .{address});
-                        return;
-                    }
+                if (address_is_connected(address)) {
+                    logger.log_fmt("already connecting, skipping {s}\n", .{address});
+                    return;
                 }
 
                 var conn = try Connection.alloc();
@@ -407,6 +397,8 @@ pub const Job = union(enum) {
                 var it = finger_table.iterator();
                 while (it.next()) |kv| {
                     const find_id = kv.key;
+                    // we want to send the request to the nearest peer to the ID
+                    // If there are no matching connections, we can't send the request
                     const connection = connection_by_nearest_id(find_id) catch {
                         continue;
                     };
@@ -425,7 +417,7 @@ pub const Job = union(enum) {
                     if (kv.value.address) |address| {
                         if (address_is_connected(address) or is_self_address(address)) {
                             // address is already connected
-                            logger.log_fmt("not adding nearest peer address: {s}\n", .{address});
+                            logger.log_fmt("not adding, already connected or self address: {s}\n", .{address});
                             continue;
                         }
 
@@ -434,7 +426,7 @@ pub const Job = union(enum) {
                         } else {
                             logger.log_fmt("Requesting peer connection to: {s}\n", .{address});
 
-                            try enqueue(Job{ .connect = .{ .address = address } });
+                            try enqueue(Job{ .connect = address });
                             try temp_hash_map.put(address, true);
                         }
                     }
@@ -469,7 +461,7 @@ fn event_queue_threadfunc(context: void) void {
                 logger.log_fmt("Work Error: {}\n", .{e});
             };
         } else {
-            c.nng_msleep(100);
+            c.nng_msleep(10);
         }
     }
 }
@@ -554,14 +546,12 @@ fn timer_threadfunc(context: void) !void {
     logger.log_fmt("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(4000);
-        try enqueue(Job{ .bootstrap = .{ .n = 4 } });
+        try enqueue(Job{ .bootstrap = 1 });
         try enqueue(Job{ .manage_connections = 0 });
         c.nng_msleep(4000);
         try enqueue(Job{ .refresh_finger_table = 0 });
         c.nng_msleep(4000);
         try enqueue(Job{ .sync_finger_table = 0 });
-
-        logger.log_fmt("info, connections:{any}\n", .{connections.items});
     }
 }
 
@@ -601,7 +591,7 @@ pub fn main() !void {
         workers.inWorkCallback(w.toOpaque());
     }
 
-    try enqueue(Job{ .bootstrap = .{ .n = 4 } });
+    try enqueue(Job{ .bootstrap = 1 });
     try enqueue(Job{ .redraw = 0 });
 
     event_thread.wait();
