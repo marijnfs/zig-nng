@@ -39,6 +39,9 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid, .id = node.my_id, .inbound_sockaddr = sockaddr, .port = node.my_port } } } });
         },
         .nearest_peer => {
+            //todo: pass on message even if you don't know yours
+            //make sure to not consider self if equal to search id
+            //make sure not to infinite loop message
             const search_id = request.nearest_peer;
             var nearest_distance = node.xor(node.my_id, search_id);
             var nearest_id = node.my_id;
@@ -50,7 +53,9 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
 
             var im_closest = true;
             for (node.connections.items) |connection| {
-                if (connection.id_known()) {
+                if (connection.id_known() and
+                    !std.mem.eql(u8, connection.id[0..], search_id[0..])) //we want nearest but not equal, this is important for finding your nearest peer
+                {
                     const dist = node.xor(connection.id, search_id);
                     if (node.less(dist, nearest_distance)) {
                         nearest_distance = dist;

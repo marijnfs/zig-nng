@@ -119,8 +119,8 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
     const work = InWork.fromOpaque(arg);
 
-    nng_ret(c.nng_aio_result(work.aio)) catch {
-        logger.log_fmt("error\n", .{});
+    nng_ret(c.nng_aio_result(work.aio)) catch |err| {
+        logger.log_fmt("error {}\n", .{err});
         work.state = .Error;
         return;
     };

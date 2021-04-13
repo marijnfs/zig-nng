@@ -15,6 +15,7 @@ const DrawMode = enum {
     Connection,
     FingerTable,
     KnownAddresses,
+    Workers,
     NDrawModes,
 };
 
@@ -95,6 +96,15 @@ pub fn draw() !void {
                 } else {
                     try writer.print("base:{s} id:{s}\n", .{ std.fmt.fmtSliceHexLower(base_id[0..]), std.fmt.fmtSliceHexLower(base_id[0..]) });
                 }
+            }
+        },
+        .Workers => {
+            for (node.outgoing_workers.items) |worker| {
+                try writer.print("worker:{any}\n", .{worker});
+            }
+            _ = try writer.write("=====");
+            for (node.incoming_workers) |worker| {
+                try writer.print("in work:{any}\n", .{worker});
             }
         },
         .NDrawModes => {},

@@ -44,9 +44,6 @@ var read_lines_thread: *Thread = undefined;
 // Database which holds known items
 var database = std.AutoHashMap(ID, Block).init(allocator);
 
-// Map holding ID -> Map
-var peers = std.AutoHashMap(ID, Address).init(allocator);
-
 // Known addresses to bootstrap
 pub var known_addresses = std.ArrayList(Address).init(allocator);
 
@@ -77,8 +74,8 @@ pub var finger_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 // Our connections
 pub var connections = std.ArrayList(*Connection).init(allocator);
 
-var incoming_workers: [defines.N_INCOMING_WORKERS]*InWork = undefined;
-var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
+pub var incoming_workers: [defines.N_INCOMING_WORKERS]*InWork = undefined;
+pub var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
 
 var main_socket: c.nng_socket = undefined;
 
@@ -471,10 +468,10 @@ fn get_finger_id(id: ID, bit: usize) ID {
     // We find the index in the byte (bit_id)
     // We find the byte (byte_id)
     const byte_id: usize = bit / 8;
-    const single_byte: u3 = @intCast(u3, bit % 8);
+    const bit_position: u3 = @intCast(u3, bit % 8);
 
     // convert to bit index
-    const bit_id: u3 = @intCast(u3, 7 - single_byte);
+    const bit_id: u3 = @intCast(u3, 7 - bit_position);
 
     var new_id = id;
     new_id[byte_id] = id[byte_id] ^ (@as(u8, 1) << bit_id); //xor byte with bit in correct place
@@ -522,6 +519,10 @@ fn init() !void {
     logger.log_fmt("My ID: {x}\n", .{std.fmt.fmtSliceHexLower(my_id[0..])});
 
     logger.log_fmt("Filling routing table\n", .{});
+
+    // put yourself there, to find the nearest after you
+    try finger_table.put(my_id, PeerInfo{ .id = std.mem.zeroes(ID) });
+
     var i: usize = 0;
     while (i < defines.ROUTING_TABLE_SIZE) : (i += 1) {
         var other_id = get_finger_id(my_id, i);
