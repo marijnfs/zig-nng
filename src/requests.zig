@@ -38,11 +38,10 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             logger.log_fmt("ping from {s}\n", .{address_str});
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .ping_id = .{ .conn_guid = conn_guid, .id = node.my_id, .inbound_sockaddr = sockaddr, .port = node.my_port } } } });
         },
-        .nearest_peer => {
+        .nearest_peer => |search_id| {
             //todo: pass on message even if you don't know yours
             //make sure to not consider self if equal to search id
             //make sure not to infinite loop message
-            const search_id = request.nearest_peer;
             var nearest_distance = node.xor(node.my_id, search_id);
             var nearest_id = node.my_id;
             if (node.is_zero(node.my_id)) {
@@ -73,6 +72,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
                     try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address.? } } } });
                 }
             } else {
+                // pass on request
                 const nearest_conn = try node.connection_by_nearest_id(search_id);
                 try node.enqueue(Job{ .send_request = .{ .conn_guid = nearest_conn.guid, .guid = guid, .enveloped = request } });
             }

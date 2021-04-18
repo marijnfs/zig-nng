@@ -103,7 +103,7 @@ pub fn draw() !void {
                 try writer.print("worker:{any}\n", .{worker});
             }
             _ = try writer.write("=====");
-            for (node.incoming_workers) |worker| {
+            for (node.incoming_workers.items) |worker| {
                 try writer.print("in work:{any}\n", .{worker});
             }
         },

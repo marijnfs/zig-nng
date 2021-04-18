@@ -17,9 +17,9 @@ const Connection = @import("connection.zig");
 
 pub const InWork = struct {
     const State = enum {
-        Init, //going to recv
+        Ready, //going to recv
         Recv, //waiting for a recv
-        Wait, //waiting for processing to create response
+        WaitSend, //waiting for processing to create response
         Error, //error happened
     };
 
@@ -37,10 +37,20 @@ pub const InWork = struct {
         return @ptrCast(*InWork, @alignCast(@alignOf(*InWork), o));
     }
 
+    pub fn readForResponse(w: *InWork) bool {
+        return w.state == .WaitSend;
+    }
+
     pub fn send(w: *InWork, msg: *c.nng_msg) void {
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
-        w.state = .Init;
+        w.state = .Ready;
+    }
+
+    pub fn close(w: *InWork) void {
+        c.nng_aio_stop(w.aio);
+        c.nng_aio_wait(w.aio);
+        _ = c.nng_ctx_close(w.ctx);
     }
 
     pub fn alloc(sock: c.nng_socket) !*InWork {
@@ -51,8 +61,12 @@ pub const InWork = struct {
 
         try nng_ret(c.nng_ctx_open(&w.ctx, sock));
 
-        w.state = State.Init;
+        w.state = State.Ready;
         return w;
+    }
+
+    pub fn free(w: *InWork) void {
+        var o = c.nng_free(w, @sizeOf(InWork));
     }
 };
 
@@ -60,8 +74,8 @@ pub const OutWork = struct {
     const State = enum {
         Unconnected, // Unconnected
         Ready, // Ready to send out a message
-        Send, // Message was sent, going to call recv
-        Wait, // Waiting for reply after recv
+        Sent, // Message was sent, going to call recv
+        WaitRecv, // Waiting for reply after recv
         Error, //error happened
     };
 
@@ -88,7 +102,7 @@ pub const OutWork = struct {
 
     pub fn send(w: *OutWork, msg: *c.nng_msg) void {
         logger.log_fmt("sending out\n", .{});
-        w.state = .Send;
+        w.state = .Sent;
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
     }
@@ -112,6 +126,16 @@ pub const OutWork = struct {
 
         return w;
     }
+
+    pub fn close(w: *OutWork) void {
+        c.nng_aio_stop(w.aio);
+        c.nng_aio_wait(w.aio);
+        _ = c.nng_ctx_close(w.ctx);
+    }
+
+    pub fn free(w: *OutWork) void {
+        var o = c.nng_free(w, @sizeOf(OutWork));
+    }
 };
 
 pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
@@ -130,7 +154,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             //disconnect
             logger.log_fmt("In worker Error state\n", .{});
         },
-        .Init => {
+        .Ready => {
             c.nng_ctx_recv(work.ctx, work.aio);
             work.state = .Recv;
         },
@@ -147,7 +171,7 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
 
             // set worker up for response
             work.guid = msg_guid;
-            work.state = .Wait;
+            work.state = .WaitSend;
 
             // We deserialise the message in a request
             const request = deserialise_msg(Request, msg.?) catch |e| {
@@ -163,17 +187,26 @@ pub fn inWorkCallback(arg: ?*c_void) callconv(.C) void {
             };
         },
 
-        .Wait => {},
+        .WaitSend => {},
     }
 }
 
 fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
     const work = OutWork.fromOpaque(arg);
 
-    nng_ret(c.nng_aio_result(work.aio)) catch {
-        logger.log_fmt("error\n", .{});
-        work.state = .Error;
-        return;
+    nng_ret(c.nng_aio_result(work.aio)) catch |err| {
+        switch (err) {
+            error.NNG_ETIMEDOUT => {
+                logger.log_fmt("timeout\n", .{});
+                work.state = .Ready;
+                return;
+            },
+            error.NNG => {
+                logger.log_fmt("error\n", .{});
+                work.state = .Error;
+                return;
+            },
+        }
     };
 
     switch (work.state) {
@@ -181,14 +214,14 @@ fn outWorkCallback(arg: ?*c_void) callconv(.C) void {
             logger.log_fmt("Outworker Error state\n", .{});
         },
         .Ready => {},
-        .Send => {
+        .Sent => {
             logger.log_fmt("out callback, calling recv\n", .{});
 
             c.nng_ctx_recv(work.ctx, work.aio);
-            work.state = .Wait;
+            work.state = .WaitRecv;
         },
 
-        .Wait => {
+        .WaitRecv => {
             var msg = c.nng_aio_get_msg(work.aio);
             var guid: Guid = 0;
 

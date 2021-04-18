@@ -74,7 +74,8 @@ pub var finger_table = std.AutoHashMap(ID, PeerInfo).init(allocator);
 // Our connections
 pub var connections = std.ArrayList(*Connection).init(allocator);
 
-pub var incoming_workers: [defines.N_INCOMING_WORKERS]*InWork = undefined;
+// pub var incoming_workers: [defines.N_INCOMING_WORKERS]*InWork = undefined;
+pub var incoming_workers = std.ArrayList(*InWork).init(allocator);
 pub var outgoing_workers = std.ArrayList(*OutWork).init(allocator);
 
 var main_socket: c.nng_socket = undefined;
@@ -218,6 +219,7 @@ pub const Job = union(enum) {
     process_key: []const u8,
 
     manage_connections: usize, //void has issues, so we use usize
+    manage_workers: usize, //manage workers on connections
     refresh_finger_table: usize, //void has issues, so we use usize
     redraw: usize, //void has issues, so we use usize
     shutdown: usize, //void has issues, so we use usize
@@ -273,11 +275,8 @@ pub const Job = union(enum) {
 
                 try serialise_msg(request, request_msg.?);
 
-                logger.log_fmt("routing request to worker: {any}\n", .{outgoing_workers.items});
                 for (outgoing_workers.items) |out_worker| {
                     if (out_worker.accepting() and out_worker.connection == conn) {
-                        logger.log_fmt("selected out_worker {}\n", .{out_worker});
-
                         out_worker.send(request_msg.?);
 
                         return;
@@ -300,8 +299,8 @@ pub const Job = union(enum) {
                 try serialise_msg(response, response_msg.?);
 
                 logger.log_fmt("Sending response, guid {}, msg: {}\n", .{ guid, response_msg });
-                for (incoming_workers) |w| {
-                    if (w.guid == guid and w.state == .Wait) {
+                for (incoming_workers.items) |w| {
+                    if (w.guid == guid and w.readForResponse()) {
                         logger.log_fmt("Found matching worker, sending response: {}\n", .{w});
                         w.send(response_msg.?);
                         break;
@@ -362,6 +361,7 @@ pub const Job = union(enum) {
                 logger.log_fmt("connect on socket: {}\n", .{conn.socket});
                 var out_worker = try OutWork.alloc(conn);
                 try outgoing_workers.append(out_worker);
+                conn.n_workers += 1;
 
                 const guid = defines.get_guid();
                 try self_guids.put(guid, true); //register that this guid is to be processed by us
@@ -386,6 +386,38 @@ pub const Job = union(enum) {
                     } else {
                         i += 1;
                     }
+                }
+            },
+            .manage_workers => {
+                {
+                    var i: usize = 0;
+                    while (i < outgoing_workers.items.len) {
+                        const worker = outgoing_workers.items[i];
+                        if (worker.state == .Error) {
+                            worker.close();
+                            worker.free();
+                            _ = outgoing_workers.orderedRemove(i);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+                {
+                    var i: usize = 0;
+                    while (i < incoming_workers.items.len) {
+                        const worker = incoming_workers.items[i];
+                        if (worker.state == .Error) {
+                            worker.close();
+                            worker.free();
+                            _ = incoming_workers.orderedRemove(i);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+
+                while (incoming_workers.items.len < defines.N_INCOMING_WORKERS) {
+                    try add_incoming_worker();
                 }
             },
             .refresh_finger_table => {
@@ -580,22 +612,23 @@ pub fn main() !void {
     }
 
     try nng_ret(c.nng_rep0_open(&main_socket));
-
-    for (incoming_workers) |*w| {
-        w.* = try InWork.alloc(main_socket);
-    }
-
     try nng_ret(c.nng_listen(main_socket, address, 0, 0));
-
     logger.log_fmt("listening on {s}", .{address});
-    for (incoming_workers) |w| {
-        workers.inWorkCallback(w.toOpaque());
+
+    while (incoming_workers.items.len < defines.N_INCOMING_WORKERS) {
+        try add_incoming_worker();
     }
 
     try enqueue(Job{ .bootstrap = 1 });
     try enqueue(Job{ .redraw = 0 });
 
     event_thread.wait();
+}
+
+fn add_incoming_worker() !void {
+    var worker = try InWork.alloc(main_socket);
+    try incoming_workers.append(worker);
+    workers.inWorkCallback(worker.toOpaque());
 }
 
 test "serialiseTest" {

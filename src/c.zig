@@ -13,6 +13,8 @@ pub const c = @cImport({
 pub fn nng_ret(code: c_int) !void {
     if (code != 0) {
         logger.log_fmt("nng_err: {s}\n", .{c.nng_strerror(code)});
+        if (code == c.NNG_ETIMEDOUT)
+            return error.NNG_ETIMEDOUT;
         return error.NNG;
     }
 }
