@@ -111,8 +111,13 @@ pub fn draw() !void {
     }
 
     canvas.clear();
-    canvas.blitFrom(box, 0, 4, focus_row, 0);
-    canvas.blitFrom(error_box, 10, 4, focus_row, 0);
+    canvas.blitFrom(box, .{
+        .row_num = 0,
+        .col_num = 4,
+        .rows = 9,
+    }, .{ .row_num = 0 });
+
+    canvas.blitFrom(error_box, .{ .row_num = 10, .col_num = 4 }, .{ .row_num = @intCast(isize, focus_row) });
 
     try zbox.push(canvas);
 }
