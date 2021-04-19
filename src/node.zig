@@ -330,7 +330,7 @@ pub const Job = union(enum) {
                 try handle_request(guid, request, msg);
             },
             .bootstrap => {
-                logger.log_fmt("bootstrap: {any}\n", .{known_addresses.items});
+                logger.log_fmt("bootstrap: \n", .{});
                 var n = self.bootstrap;
                 if (known_addresses.items.len < n)
                     n = known_addresses.items.len;

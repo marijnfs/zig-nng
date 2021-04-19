@@ -67,8 +67,6 @@ pub fn draw() !void {
     var cursor = box.wrappedCursorAt(0, 0);
     var writer = cursor.writer();
 
-    try writer.print("mode:{}\n", .{draw_mode});
-
     switch (draw_mode) {
         .Messages => {
             for (model.messages.items) |line| {
@@ -76,7 +74,6 @@ pub fn draw() !void {
             }
         },
         .Connection => {
-            try writer.print("My id: {s}, conn:\n", .{std.fmt.fmtSliceHexLower(node.my_id[0..])});
             for (node.connections.items) |connection| {
                 try writer.print("addr:{s} id:{s}, n_workers:{} state:{}\n", .{ connection.address, std.fmt.fmtSliceHexLower(connection.id[0..]), connection.n_workers, connection.state });
             }
@@ -110,14 +107,20 @@ pub fn draw() !void {
         .NDrawModes => {},
     }
 
+    // Header
     canvas.clear();
+    {
+        var canvas_cursor = canvas.wrappedCursorAt(0, 0);
+        var canvas_writer = canvas_cursor.writer();
+        try canvas_writer.print("I'm: {s}.., addr: {s} mode:{}\n", .{ std.fmt.fmtSliceHexLower(node.my_id[0..8]), node.my_address, draw_mode });
+    }
     canvas.blitFrom(box, .{
-        .row_num = 0,
+        .row_num = 1,
         .col_num = 4,
         .rows = 9,
-    }, .{ .row_num = 0 });
+    }, .{ .row_num = @intCast(isize, focus_row) });
 
-    canvas.blitFrom(error_box, .{ .row_num = 10, .col_num = 4 }, .{ .row_num = @intCast(isize, focus_row) });
+    canvas.blitFrom(error_box, .{ .row_num = 11, .col_num = 4 }, .{ .row_num = @intCast(isize, focus_row) });
 
     try zbox.push(canvas);
 }

@@ -13,9 +13,24 @@ const node = @import("node.zig");
 const utils = @import("utils.zig");
 
 pub const Response = union(enum) {
-    ping_id: struct { conn_guid: Guid, id: ID, inbound_sockaddr: c.nng_sockaddr, port: u16 },
+    ping_id: struct {
+        conn_guid: Guid,
+        id: ID,
+        inbound_sockaddr: c.nng_sockaddr,
+        port: u16,
+        pub fn format(r: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, out: anytype) !void {
+            try out.print("{any} {s} {any} {any}", .{ r.conn_guid, std.fmt.fmtSliceHexLower(r.id[0..]), r.inbound_sockaddr, r.port });
+        }
+    },
     broadcast_confirm: usize,
-    nearest_peer: struct { search_id: ID, nearest_id: ID, address: ?Address },
+    nearest_peer: struct {
+        search_id: ID,
+        nearest_id: ID,
+        address: ?Address,
+        pub fn format(r: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, out: anytype) !void {
+            try out.print("{s} {s} {s}", .{ std.fmt.fmtSliceHexLower(r.search_id[0..8]), std.fmt.fmtSliceHexLower(r.nearest_id[0..8]), r.address });
+        }
+    },
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {
