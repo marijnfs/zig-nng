@@ -247,10 +247,8 @@ pub const Job = union(enum) {
                 const message = self.broadcast_msg.enveloped;
                 const guid = self.broadcast_msg.guid;
 
-                // Check if broadcasted already, Dont broadcast again
-                if (guid_seen.get(guid)) |seen| {
-                    return;
-                }
+                // we already check on input, and then this would already be set and not broadcasted
+                // so here we just put
                 try guid_seen.put(guid, true);
 
                 for (connections.items) |conn| {
