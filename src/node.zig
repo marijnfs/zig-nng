@@ -128,7 +128,6 @@ pub const Message = struct {
 
 pub fn connection_by_guid(guid: Guid) !*Connection {
     for (connections.items) |conn| {
-        logger.log_fmt("Looking {} {}\n", .{ conn.guid, guid });
         if (conn.guid == guid) {
             return conn;
         }
@@ -284,7 +283,7 @@ pub const Job = union(enum) {
                 }
 
                 // If we get here nothing was sent, reschedule
-                logger.log_fmt("drop message: {}\n", .{self.*});
+                logger.log_fmt("no outworkers, drop message: {}\n", .{self.*});
                 // try enqueue(self.*);
             },
             .send_response => {
@@ -346,7 +345,7 @@ pub const Job = union(enum) {
 
                 // Setup connection
                 if (address_is_connected(address)) {
-                    logger.log_fmt("already connecting, skipping {s}\n", .{address});
+                    logger.log_fmt("already connected, skipping {s}\n", .{address});
                     return;
                 }
 
@@ -579,7 +578,7 @@ fn timer_threadfunc(context: void) !void {
     logger.log_fmt("Timer thread\n", .{});
     while (true) {
         c.nng_msleep(4000);
-        try enqueue(Job{ .bootstrap = 1 });
+        try enqueue(Job{ .bootstrap = 4 });
         try enqueue(Job{ .manage_connections = 0 });
         c.nng_msleep(4000);
         try enqueue(Job{ .refresh_finger_table = 0 });
@@ -599,10 +598,12 @@ pub fn main() !void {
         std.os.exit(1);
     }
 
-    const address = try std.cstr.addNullByte(allocator, args[1]);
-    defer allocator.free(address);
+    const base_address = try std.cstr.addNullByte(allocator, args[1]);
+    defer allocator.free(base_address);
 
     my_port = try std.fmt.parseInt(u16, args[2], 10);
+    const address = try std.fmt.allocPrintZ(allocator, "{s}:{}", .{ base_address, my_port });
+
     logger.log_fmt("Setting up server, with ip: {s}, port: {}\n", .{ address, my_port });
 
     for (args[3..]) |out_addr| {
@@ -619,7 +620,7 @@ pub fn main() !void {
         try add_incoming_worker();
     }
 
-    try enqueue(Job{ .bootstrap = 1 });
+    try enqueue(Job{ .bootstrap = 4 });
     try enqueue(Job{ .redraw = 0 });
 
     event_thread.wait();
