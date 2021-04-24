@@ -189,7 +189,3 @@ pub fn display_loop(context: void) !void {
         }
     }
 }
-
-test "static anal" {
-    std.meta.refAllDecls(@This());
-}

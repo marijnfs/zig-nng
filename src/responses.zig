@@ -31,6 +31,7 @@ pub const Response = union(enum) {
             try out.print("{s} {s} {s}", .{ std.fmt.fmtSliceHexLower(r.search_id[0..8]), std.fmt.fmtSliceHexLower(r.nearest_id[0..8]), r.address });
         }
     },
+    already_seen: u8,
 };
 
 pub fn handle_response(guid: u64, response: Response) !void {
@@ -41,7 +42,7 @@ pub fn handle_response(guid: u64, response: Response) !void {
         .ping_id, .nearest_peer => {
             var for_me: bool = node.self_guids.get(guid) != null;
             if (for_me) {
-                logger.log_fmt("message for me! {} {}", .{ guid, response });
+                logger.log_fmt("message for me! {} {}\n", .{ guid, response });
             } else {
                 logger.log_fmt("Passing message on, guid not for me: {} {}\n", .{ guid, response });
                 logger.log_fmt("{}\n", .{node.self_guids.count()});
@@ -96,6 +97,9 @@ pub fn handle_response(guid: u64, response: Response) !void {
 
                 try node.finger_table.put(search_id, .{ .id = reported_id, .address = address });
             }
+        },
+        .already_seen => {
+            logger.log("peer responded with already_seen");
         },
     }
 }

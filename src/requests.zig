@@ -25,6 +25,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
     if (node.guid_seen.get(guid)) |_| {
         // We already got this request, drop it
         logger.log_fmt("Already seen, dropping request with guid: {}\n", .{guid});
+        try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .already_seen = 0 } } });
         return;
     }
     try node.guid_seen.put(guid, true);

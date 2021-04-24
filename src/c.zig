@@ -18,3 +18,9 @@ pub fn nng_ret(code: c_int) !void {
         return error.NNG;
     }
 }
+
+pub fn nng_msg_alloc() !?*c.nng_msg {
+    var request_msg: ?*c.nng_msg = undefined;
+    try nng_ret(c.nng_msg_alloc(&request_msg, 0));
+    return request_msg;
+}

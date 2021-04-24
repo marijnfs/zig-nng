@@ -4,9 +4,11 @@ const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
 const warn = std.debug.warn;
 
-const c = @import("c.zig").c;
-const AtomicQueue = @import("queue.zig").AtomicQueue;
 const nng_ret = @import("c.zig").nng_ret;
+const nng_msg_alloc = @import("c.zig").nng_msg_alloc;
+const c = @import("c.zig").c;
+
+const AtomicQueue = @import("queue.zig").AtomicQueue;
 const logger = @import("logger.zig");
 const model = @import("model.zig");
 
@@ -264,9 +266,7 @@ pub const Job = union(enum) {
 
                 const request = self.send_request.enveloped;
 
-                var request_msg: ?*c.nng_msg = undefined;
-                try nng_ret(c.nng_msg_alloc(&request_msg, 0));
-
+                var request_msg = try nng_msg_alloc();
                 // First set the guid
                 try nng_ret(c.nng_msg_append_u64(request_msg, guid));
 
@@ -280,15 +280,12 @@ pub const Job = union(enum) {
                     }
                 }
 
-                // If we get here nothing was sent, reschedule
                 logger.log_fmt("no outworkers, drop message: {}\n", .{self.*});
-                // try enqueue(self.*);
             },
             .send_response => {
                 const guid = self.send_response.guid;
                 const response = self.send_response.enveloped;
-                var response_msg: ?*c.nng_msg = undefined;
-                try nng_ret(c.nng_msg_alloc(&response_msg, 0));
+                var response_msg = try nng_msg_alloc();
 
                 // First set the guid
                 try nng_ret(c.nng_msg_append_u64(response_msg, guid));
@@ -297,7 +294,7 @@ pub const Job = union(enum) {
 
                 logger.log_fmt("Sending response, guid {}, msg: {}\n", .{ guid, response_msg });
                 for (incoming_workers.items) |w| {
-                    if (w.guid == guid and w.readForResponse()) {
+                    if (w.guid == guid and w.readyForResponse()) {
                         logger.log_fmt("Found matching worker, sending response: {}\n", .{w});
                         w.send(response_msg.?);
                         break;
@@ -466,7 +463,7 @@ pub const Job = union(enum) {
                 const key = process_key[0];
 
                 if (key == 13) { //Return Key
-                    try enqueue(Job{ .introduce_message = .{ .content = line_buffer.items } });
+                    try enqueue(Job{ .introduce_message = .{ .content = try std.mem.dupe(allocator, u8, line_buffer.items) } });
                     try line_buffer.resize(0);
                 } else if (key == 27) {
                     const page_up = [_]u8{ 27, 91, 53, 126 };

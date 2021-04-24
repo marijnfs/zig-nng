@@ -37,7 +37,7 @@ pub const InWork = struct {
         return @ptrCast(*InWork, @alignCast(@alignOf(*InWork), o));
     }
 
-    pub fn readForResponse(w: *InWork) bool {
+    pub fn readyForResponse(w: *InWork) bool {
         return w.state == .WaitSend;
     }
 
