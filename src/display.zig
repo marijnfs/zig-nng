@@ -125,6 +125,17 @@ pub fn draw() !void {
     try zbox.push(canvas);
 }
 
+pub fn increase_focus_row(amount: usize) void {
+    focus_row += amount;
+}
+
+pub fn decrease_focus_row(amount: usize) void {
+    if (focus_row > amount)
+        focus_row -= amount
+    else
+        focus_row = 0;
+}
+
 pub fn display_loop(context: void) !void {
     var alloc = page_allocator;
 
@@ -157,12 +168,11 @@ pub fn display_loop(context: void) !void {
                 node.enqueue(node.Job{ .process_key = other }) catch unreachable;
             },
             .up => {
-                if (focus_row > 0)
-                    focus_row -= 1;
+                decrease_focus_row(1);
                 node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
             },
             .down => {
-                focus_row += 1;
+                increase_focus_row(1);
                 node.enqueue(node.Job{ .redraw = 0 }) catch unreachable;
             },
             .left => {

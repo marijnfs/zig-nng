@@ -468,6 +468,18 @@ pub const Job = union(enum) {
                 if (key == 13) { //Return Key
                     try enqueue(Job{ .introduce_message = .{ .content = line_buffer.items } });
                     try line_buffer.resize(0);
+                } else if (key == 27) {
+                    const page_up = [_]u8{ 27, 91, 53, 126 };
+                    const page_down = [_]u8{ 27, 91, 54, 126 };
+                    const home = [_]u8{ 27, 79, 72 };
+                    const end = [_]u8{ 27, 79, 70 };
+
+                    if (std.mem.eql(u8, process_key, &page_up)) {
+                        display.decrease_focus_row(10);
+                    }
+                    if (std.mem.eql(u8, process_key, &page_down)) {
+                        display.increase_focus_row(10);
+                    }
                 } else {
                     try line_buffer.append(key);
                 }

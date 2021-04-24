@@ -72,3 +72,7 @@ pub fn dial(self: *Connection) !void {
 pub fn listen(self: *Connection) !void {
     try nng_ret(c.nng_listen(self.socket, self.address, 0, 0));
 }
+
+pub fn format(con: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, out: anytype) !void {
+    try out.print("giud:{} id:{s} addr:{s}", .{ con.guid, std.fmt.fmtSliceHexLower(con.id[0..8]), con.address });
+}

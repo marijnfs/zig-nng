@@ -21,6 +21,14 @@ pub const Request = union(enum) {
 
 pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
     logger.log_fmt("req{}\n", .{request});
+
+    if (node.guid_seen.get(guid)) |_| {
+        // We already got this request, drop it
+        logger.log_fmt("Already seen, dropping request with guid: {}\n", .{guid});
+        return;
+    }
+    try node.guid_seen.put(guid, true);
+
     switch (request) {
         .ping_id => |ping_id| {
             const conn_guid = ping_id.conn_guid; //Guid that requesting node uses to assign Connection
@@ -65,12 +73,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
             }
 
             if (im_closest) {
-                if (node.my_address == null) {
-                    logger.log_fmt("My address is not known yet\n", .{});
-                    try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = null } } } });
-                } else {
-                    try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address.? } } } });
-                }
+                try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .nearest_peer = .{ .search_id = search_id, .nearest_id = nearest_id, .address = node.my_address } } } });
             } else {
                 // pass on request
                 const nearest_conn = try node.connection_by_nearest_id(search_id);
@@ -80,12 +83,7 @@ pub fn handle_request(guid: Guid, request: Request, msg: *c.nng_msg) !void {
         .broadcast => |message| {
             try node.enqueue(Job{ .send_response = .{ .guid = guid, .enveloped = .{ .broadcast_confirm = 0 } } });
             try node.enqueue(Job{ .broadcast_msg = .{ .guid = guid, .enveloped = message } });
-            if (node.guid_seen.get(guid)) |seen| {
-                return;
-            } else {
-                try node.guid_seen.put(guid, true);
-                try node.enqueue(Job{ .add_message_to_model = .{ .content = message.content } });
-            }
+            try node.enqueue(Job{ .add_message_to_model = .{ .content = message.content } });
         },
     }
 }
