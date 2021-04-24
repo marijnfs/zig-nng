@@ -181,24 +181,6 @@ pub fn address_is_connected(address: Address) bool {
     return false;
 }
 
-// Rudimentary console
-fn read_lines(context: void) !void {
-    logger.log_fmt("Console started\n", .{});
-
-    var buf: [4096]u8 = undefined;
-
-    while (true) {
-        const line = (std.io.getStdIn().reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize)) catch |e| switch (e) {
-            error.EndOfStream => {
-                logger.log_fmt("=Console Ending=\n", .{});
-                return;
-            },
-            else => return e,
-        });
-        try enqueue(Job{ .handle_stdin_line = .{ .buffer = line } });
-    }
-}
-
 pub fn enqueue(job: Job) !void {
     // logger.log_fmt("queuing job: {}\n", .{job});
     try event_queue.push(job);
