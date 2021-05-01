@@ -1,5 +1,8 @@
 const std = @import("std");
 const fmt = std.fmt;
+
+// pub const io_mode = .evented;
+
 const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
 const warn = std.debug.warn;
@@ -27,6 +30,8 @@ const deserialise_msg = @import("serialise.zig").deserialise_msg;
 const workers = @import("workers.zig");
 const InWork = workers.InWork;
 const OutWork = workers.OutWork;
+
+const net = @import("net.zig");
 
 // Guid that will be used to signify self-id
 pub var my_id: ID = std.mem.zeroes(ID);
@@ -141,22 +146,22 @@ pub fn connection_by_nearest_id(id: ID) !*Connection {
     if (connections.items.len == 0)
         return error.NotFound;
 
-    var first = true;
+    var first_match = true;
     var nearest_conn: *Connection = undefined;
     var nearest_dist = std.mem.zeroes(ID);
 
     for (connections.items) |conn| {
         if (conn.state != .Disconnected and conn.id_known()) {
             const dist = xor(conn.id, id);
-            if (first or less(dist, nearest_dist)) {
+            if (first_match or less(dist, nearest_dist)) {
                 nearest_dist = dist;
                 nearest_conn = conn;
-                first = false;
+                first_match = false;
             }
         }
     }
 
-    if (first)
+    if (first_match)
         return error.NotFound;
     return nearest_conn;
 }
@@ -306,6 +311,7 @@ pub const Job = union(enum) {
                 try handle_request(guid, request, msg);
             },
             .bootstrap => {
+                std.debug.warn("bootstrap", .{});
                 logger.log_fmt("bootstrap: \n", .{});
                 var n = self.bootstrap;
                 if (known_addresses.items.len < n)
@@ -328,8 +334,12 @@ pub const Job = union(enum) {
 
                 var conn = try Connection.alloc();
                 conn.init(address);
+                std.debug.warn("connect {s}", .{address});
                 try conn.req_open();
+                std.debug.warn("connect {s}", .{address});
+
                 try conn.dial();
+                std.debug.warn("connected {s}", .{address});
 
                 try connections.append(conn);
 
@@ -530,15 +540,16 @@ pub fn is_zero(id: ID) bool {
 }
 
 fn init() !void {
+    logger.log_fmt("Initialising..\n", .{});
     try logger.init_log();
     defines.init();
 
-    logger.log_fmt("Init\n", .{});
+    try net.init();
+
     my_id = rand_id();
 
     logger.log_fmt("My ID: {x}\n", .{std.fmt.fmtSliceHexLower(my_id[0..])});
-
-    logger.log_fmt("Filling routing table\n", .{});
+    logger.log_fmt("Filling keys of routing table\n", .{});
 
     // put yourself there, to find the nearest after you
     try finger_table.put(my_id, PeerInfo{ .id = std.mem.zeroes(ID) });

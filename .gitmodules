@@ -7,3 +7,6 @@
 [submodule "ext/nng"]
 	path = ext/nng
 	url = https://github.com/marijnfs/nng.git
+[submodule "ext/zig-network"]
+	path = ext/zig-network
+	url = git@github.com:marijnfs/zig-network.git

@@ -55,6 +55,7 @@ pub fn build(b: *Builder) void {
     exe_node.addIncludeDir("src");
     exe_node.linkSystemLibrary("nng"); //Todo, link to locally build library
     exe_node.addPackagePath("zbox", "ext/zbox/src/box.zig");
+    exe_node.addPackagePath("zig-network", "ext/zig-network/network.zig");
     exe_node.linkLibC();
     exe_node.install();
 
