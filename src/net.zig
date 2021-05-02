@@ -17,6 +17,7 @@ pub fn server_loop() !void {
     while (true) {
         var socket = try server.accept();
         var connection = Connection{ .socket = socket };
+        std.debug.warn("loop\n", .{});
     }
 }
 
@@ -72,3 +73,7 @@ const Connection = struct {
 
     pub fn connectionLoop(self: *Connection, endpoint: network.Endpoint) !void {}
 };
+
+test "" {
+    try init();
+}

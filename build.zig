@@ -1,5 +1,6 @@
 const std = @import("std");
 const Builder = std.build.Builder;
+const Pkg = std.build.Pkg;
 const builtin = @import("builtin");
 const Target = std.build.Target;
 
@@ -25,8 +26,16 @@ pub fn build(b: *Builder) void {
         },
     });
 
-    // const nng_lib = getLibrary(b, mode, target);
-    // nng_lib.install();
+    const pkg_network = Pkg{
+        .name = "zig-network",
+        .path = "ext/zig-network/network.zig",
+    };
+
+    const pkg_net = Pkg{
+        .name = "net",
+        .path = "src/net.zig",
+        .dependencies = &[_]Pkg{pkg_network},
+    };
 
     var main_tests = b.addTest("src/node.zig");
     main_tests.addIncludeDir("ext/nng/include");
@@ -35,20 +44,13 @@ pub fn build(b: *Builder) void {
     main_tests.setBuildMode(mode);
     main_tests.linkSystemLibrary("nng");
 
-    var req_tests = b.addTest("src/requests.zig");
-    req_tests.addIncludeDir("ext/nng/include");
-    req_tests.addIncludeDir("src");
-    req_tests.linkLibC();
-    req_tests.setBuildMode(mode);
-    req_tests.linkSystemLibrary("nng");
-    // main_tests.linkLibrary(nng_lib);
-
-    const exe_server = b.addExecutable("server", "src/server.zig");
-    exe_server.addIncludeDir("ext/nng/include");
-    exe_server.addIncludeDir("src");
-    exe_server.linkSystemLibrary("nng"); //Todo, link to locally build library
-    exe_server.linkLibC();
-    exe_server.install();
+    var net_tests = b.addTest("src/net.zig");
+    net_tests.addIncludeDir("ext/nng/include");
+    net_tests.addIncludeDir("src");
+    net_tests.addPackagePath("zig-network", "ext/zig-network/network.zig");
+    net_tests.linkLibC();
+    net_tests.setBuildMode(mode);
+    net_tests.linkSystemLibrary("nng");
 
     const exe_node = b.addExecutable("node", "src/node.zig");
     exe_node.addIncludeDir("ext/nng/include");
@@ -59,9 +61,14 @@ pub fn build(b: *Builder) void {
     exe_node.linkLibC();
     exe_node.install();
 
+    const exe_net = b.addExecutable("nettest", "exe/nettest.zig");
+    exe_net.addIncludeDir("src");
+    exe_net.addPackage(pkg_net);
+    exe_net.install();
+
     const test_step = b.step("test", "Run library tests");
-    test_step.dependOn(&main_tests.step);
-    test_step.dependOn(&req_tests.step);
+    // test_step.dependOn(&main_tests.step);
+    test_step.dependOn(&net_tests.step);
 }
 
 pub fn getLibrary(
