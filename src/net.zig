@@ -2,13 +2,27 @@ const std = @import("std");
 const network = @import("zig-network");
 const allocator = @import("defines.zig").allocator;
 
+var server = Connection{};
+
 pub fn init() !void {
     try network.init();
+    var frame = async server_loop();
+}
+
+pub fn server_loop() !void {
+    try server.create_ipv4();
+    try server.bindToPort(2000);
+    try server.listen();
+
+    while (true) {
+        var socket = try server.accept();
+        var connection = Connection{ .socket = socket };
+    }
 }
 
 const Connection = struct {
     socket: network.Socket = undefined,
-    done: bool = false,
+    finished: bool = false,
     // handle_frame: @Frame(Client.handle),
 
     pub fn create_ipv4(self: *Connection) !void {
@@ -20,19 +34,23 @@ const Connection = struct {
     }
 
     pub fn bind(self: *Connection, endpoint: network.EndPoint) !void {
-        try server.bind(endpoint);
+        try self.socket.bind(endpoint);
+    }
+
+    pub fn connect(self: *Connection, endpoint: network.EndPoint) !void {
+        try self.socket.connect(endpoint);
     }
 
     pub fn bindToPort(self: *Connection, port: u16) !void {
-        try server.bindToPort(port);
+        try self.socket.bindToPort(port);
     }
 
     pub fn listen(self: *Connection) !void {
-        try server.listen();
+        try self.socket.listen();
     }
 
-    pub fn accept(self: *Connection) !void {
-        const conn = try server.accept();
+    pub fn accept(self: *Connection) !network.Socket {
+        return try self.socket.accept();
     }
 
     pub fn recv(self: *Connection, allocator: *std.mem.Allocator) ![]u8 {
@@ -44,7 +62,13 @@ const Connection = struct {
         return msg;
     }
 
+    pub fn send(self: *Connection, buf: []u8) !void {
+        _ = try self.socket.send(&buf);
+    }
+
     pub fn getLocalEndPoint(self: *Connection) !network.EndPoint {
         return try self.socket.getLocalEndPoint();
     }
+
+    pub fn connectionLoop(self: *Connection, endpoint: network.Endpoint) !void {}
 };
