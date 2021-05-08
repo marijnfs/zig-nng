@@ -2,16 +2,15 @@ const std = @import("std");
 const network = @import("zig-network");
 const allocator = @import("defines.zig").allocator;
 
-var server = Connection{};
+var server: Connection = undefined;
 
 pub fn init() !void {
     try network.init();
-    var frame = async server_loop();
 }
 
-pub fn server_loop() !void {
-    try server.create_ipv4();
-    try server.bindToPort(2000);
+pub fn server_loop(port: u16) !void {
+    server = try Connection.create_ipv4();
+    try server.bindToPort(port);
     try server.listen();
 
     while (true) {
@@ -21,13 +20,37 @@ pub fn server_loop() !void {
     }
 }
 
-const Connection = struct {
+pub fn get_endpoint_list(name: []u8, port: u16) ![]network.EndPoint {
+    var endpoints = try network.getEndpointList(allocator, name, port);
+    defer endpoints.deinit();
+
+    return std.mem.dupe(allocator, network.EndPoint, endpoints.endpoints);
+}
+
+pub const Connection = struct {
     socket: network.Socket = undefined,
     finished: bool = false,
     // handle_frame: @Frame(Client.handle),
 
-    pub fn create_ipv4(self: *Connection) !void {
-        self.socket = try network.Socket.create(.ipv4, .tcp);
+    pub fn create(endpoint: network.EndPoint) !Connection {
+        var connection: Connection = Connection{};
+        switch (endpoint.toSocketAddress()) {
+            .ipv4 => |sockaddr| connection.socket = try network.Socket.create(.ipv4, .tcp),
+            .ipv6 => |sockaddr| connection.socket = try network.Socket.create(.ipv6, .tcp),
+        }
+        return connection;
+    }
+
+    pub fn create_ipv4() !Connection {
+        var con = Connection{};
+        con.socket = try network.Socket.create(.ipv4, .tcp);
+        return con;
+    }
+
+    pub fn create_ipv6() !Connection {
+        var con = Connection{};
+        con.socket = try network.Socket.create(.ipv6, .tcp);
+        return con;
     }
 
     pub fn close(self: *Connection) void {
