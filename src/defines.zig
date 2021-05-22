@@ -21,7 +21,7 @@ pub var rng: std.rand.DefaultPrng = undefined;
 
 // unique id for message work
 pub fn get_guid() Guid {
-    const order = @import("builtin").AtomicOrder.Monotonic;
+    const order = std.builtin.AtomicOrder.Monotonic;
     var val = @atomicRmw(u64, &root_guid, .Add, 1, order);
     return val;
 }
