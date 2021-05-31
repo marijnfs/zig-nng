@@ -45,7 +45,7 @@ pub const InWork = struct {
         c.nng_aio_set_msg(w.aio, msg);
         c.nng_ctx_send(w.ctx, w.aio);
         w.state = .Ready;
-    }
+    }<z
 
     pub fn close(w: *InWork) void {
         c.nng_aio_stop(w.aio);

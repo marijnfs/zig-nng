@@ -1,9 +1,6 @@
 const std = @import("std");
 const logger = @import("logger.zig");
 
-const c = @import("c.zig").c;
-const nng_ret = @import("c.zig").nng_ret;
-
 const defines = @import("defines.zig");
 const Guid = defines.Guid;
 const ID = defines.ID;
@@ -16,7 +13,7 @@ pub const Response = union(enum) {
     ping_id: struct {
         conn_guid: Guid,
         id: ID,
-        inbound_sockaddr: c.nng_sockaddr,
+        inbound_sockaddr: std.os.sockaddr,
         port: u16,
         pub fn format(r: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, out: anytype) !void {
             try out.print("{any} {s} {any} {any}", .{ r.conn_guid, std.fmt.fmtSliceHexLower(r.id[0..]), r.inbound_sockaddr, r.port });

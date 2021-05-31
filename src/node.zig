@@ -7,10 +7,6 @@ const AutoHashMap = std.AutoHashMap;
 const Thread = std.Thread;
 const warn = std.debug.warn;
 
-const nng_ret = @import("c.zig").nng_ret;
-const nng_msg_alloc = @import("c.zig").nng_msg_alloc;
-const c = @import("c.zig").c;
-
 const AtomicQueue = @import("queue.zig").AtomicQueue;
 const logger = @import("logger.zig");
 const model = @import("model.zig");
@@ -46,7 +42,6 @@ var event_queue = AtomicQueue(Job).init(allocator);
 // Threads
 var event_thread: *Thread = undefined;
 var timer_thread: *Thread = undefined;
-var read_lines_thread: *Thread = undefined;
 
 // Database which holds known items
 var database = std.AutoHashMap(ID, Block).init(allocator);
@@ -108,7 +103,7 @@ fn OutEnvelope(comptime T: type) type {
         enveloped: T,
         conn_guid: Guid = 0, //Guid for interal addressing of output connection
         guid: Guid = 0, //request processing id
-        msg: *c.nng_msg = undefined,
+        msg: []u8 = undefined,
     };
 }
 
@@ -116,7 +111,7 @@ fn Envelope(comptime T: type) type {
     return struct {
         enveloped: T,
         guid: Guid = 0, //request processing id
-        msg: *c.nng_msg = undefined,
+        msg: []u8 = undefined,
     };
 }
 
@@ -563,7 +558,6 @@ fn init() !void {
 
     event_thread = try Thread.spawn(event_queue_threadfunc, {});
     timer_thread = try Thread.spawn(timer_threadfunc, {});
-    // read_lines_thread = try Thread.spawn(read_lines, {});
     try display.start_display_thread();
 }
 
@@ -577,12 +571,12 @@ fn ceil_log2(n: usize) usize {
 fn timer_threadfunc(context: void) !void {
     logger.log_fmt("Timer thread\n", .{});
     while (true) {
-        c.nng_msleep(4000);
+        std.time.sleep(4000);
         try enqueue(Job{ .bootstrap = 4 });
         try enqueue(Job{ .manage_connections = 0 });
-        c.nng_msleep(4000);
+        std.time.sleep(4000);
         try enqueue(Job{ .refresh_finger_table = 0 });
-        c.nng_msleep(4000);
+        std.time.sleep(4000);
         try enqueue(Job{ .sync_finger_table = 0 });
     }
 }
@@ -602,9 +596,9 @@ pub fn main() !void {
     defer allocator.free(base_address);
 
     my_port = try std.fmt.parseInt(u16, args[2], 10);
-    const address = try std.fmt.allocPrintZ(allocator, "{s}:{}", .{ base_address, my_port });
+    const server_address = try std.fmt.allocPrintZ(allocator, "{s}:{}", .{ base_address, my_port });
 
-    logger.log_fmt("Setting up server, with ip: {s}, port: {}\n", .{ address, my_port });
+    logger.log_fmt("Setting up server, with ip: {s}, port: {}\n", .{ server_address, my_port });
 
     for (args[3..]) |out_addr| {
         const out_addr_null = try std.cstr.addNullByte(allocator, out_addr);
@@ -612,13 +606,9 @@ pub fn main() !void {
         try known_addresses.append(out_addr_null);
     }
 
-    try nng_ret(c.nng_rep0_open(&main_socket));
-    try nng_ret(c.nng_listen(main_socket, address, 0, 0));
-    logger.log_fmt("listening on {s}", .{address});
-
-    while (incoming_workers.items.len < defines.N_INCOMING_WORKERS) {
-        try add_incoming_worker();
-    }
+    // Open the server connection
+    try net.init();
+    try net.server_loop(my_port);
 
     try enqueue(Job{ .bootstrap = 4 });
     try enqueue(Job{ .redraw = 0 });

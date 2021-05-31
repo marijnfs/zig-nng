@@ -1,6 +1,11 @@
 const std = @import("std");
 const network = @import("zig-network");
 const allocator = @import("defines.zig").allocator;
+const defines = @import("defines.zig");
+
+const Guid = defines.Guid;
+const ID = defines.ID;
+const Address = defines.Address;
 
 var server: Connection = undefined;
 
@@ -29,7 +34,17 @@ pub fn get_endpoint_list(name: []u8, port: u16) ![]network.EndPoint {
 
 pub const Connection = struct {
     socket: network.Socket = undefined,
-    finished: bool = false,
+    guid: Guid,
+    address: Address,
+
+    id: ID = undefined,
+
+    pub const State = enum {
+        Init,
+        Connected,
+        Disconnected,
+    };
+
     // handle_frame: @Frame(Client.handle),
 
     pub fn create(endpoint: network.EndPoint) !Connection {

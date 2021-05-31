@@ -10,7 +10,7 @@ pub const Block = []u8;
 pub const Guid = u64;
 const ID_SIZE = 32;
 pub const ID = [ID_SIZE]u8;
-pub const Address = [:0]u8;
+pub const Address = []u8;
 
 const std = @import("std");
 pub const allocator = std.heap.page_allocator;

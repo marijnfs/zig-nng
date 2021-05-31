@@ -2,23 +2,9 @@ const std = @import("std");
 const warn = std.debug.warn;
 const mem = std.mem;
 const c = @import("c.zig").c;
-const nng_ret = @import("c.zig").nng_ret;
 const allocator = @import("defines.zig").allocator;
 
-fn msg_to_ptr(comptime T: type, msg: *c.nng_msg) !*T {
-    const len = c.nng_msg_len(msg);
-    if (len < @sizeOf(T))
-        return error.ReadBeyondLimit;
-    return @ptrCast(*T, c.nng_msg_body(msg));
-}
-
-fn msg_to_slice(msg: *c.nng_msg) []u8 {
-    const len = c.nng_msg_len(msg);
-    const body = @ptrCast([*]u8, c.nng_msg_body(msg));
-    return body[0..len];
-}
-
-pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
+pub fn deserialise_msg(comptime T: type, msg: []u8) !T {
     var t: T = undefined;
     const info = @typeInfo(T);
 
@@ -121,7 +107,7 @@ pub fn deserialise_msg(comptime T: type, msg: *c.nng_msg) !T {
     return t;
 }
 
-pub fn serialise_msg(t: anytype, msg: *c.nng_msg) !void {
+pub fn serialise_msg(t: anytype, msg: *std.ArrayList(u8)) !void {
     const T = comptime @TypeOf(t);
 
     const info = @typeInfo(T);

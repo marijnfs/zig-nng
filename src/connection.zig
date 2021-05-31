@@ -3,8 +3,6 @@ const std = @import("std");
 const Connection = @This();
 
 const defines = @import("defines.zig");
-const c = @import("c.zig").c;
-const nng_ret = @import("c.zig").nng_ret;
 
 const Guid = defines.Guid;
 const ID = defines.ID;
